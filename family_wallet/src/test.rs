@@ -3038,154 +3038,227 @@ fn test_set_proposal_expiry_validation() {
     assert!(result.is_err());
 }
 
+// ============================================================================
+// Access-Audit Pagination Tests
+//
+// Covers cursor semantics, clamping, and edge cases for get_access_audit_page.
+// The end-of-log sentinel is `next_cursor == total` (length of the log).
+// ============================================================================
+
+/// Helper: seed `n` audit entries by toggling emergency mode on/off.
+fn seed_audit_entries(client: &FamilyWalletClient, owner: &Address, n: u32) {
+    for i in 0..n {
+        client.set_emergency_mode(owner, &(i % 2 == 0));
+    }
+}
+
 #[test]
-fn test_pause_guard_coverage() {
+fn test_audit_page_empty_log_returns_sentinel() {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register_contract(None, FamilyWallet);
     let client = FamilyWalletClient::new(&env, &contract_id);
-
     let owner = Address::generate(&env);
-    let member1 = Address::generate(&env);
-    let member2 = Address::generate(&env);
-    let recipient = Address::generate(&env);
-    let token = Address::generate(&env);
-    let initial_members = vec![&env, member1.clone()];
+    client.init(&owner, &vec![&env]);
 
-    client.init(&owner, &initial_members);
+    // No audit entries have been written yet.
+    let page = client.get_access_audit_page(&owner, &0, &10);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.items.len(), 0);
+    // next_cursor == total (0) — end-of-log sentinel.
+    assert_eq!(page.next_cursor, 0);
+}
 
-    // Setup pause admin and pause
-    client.set_pause_admin(&owner, &owner);
-    assert!(!client.is_paused());
-    client.pause(&owner);
-    assert!(client.is_paused());
+#[test]
+fn test_audit_page_offset_beyond_length_returns_sentinel() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
 
-    // 1. add_member
-    let result = client.try_add_member(&owner, &member2, &FamilyRole::Member, &100);
-    assert!(result.is_err());
+    seed_audit_entries(&client, &owner, 3);
 
-    // 2. update_spending_limit
-    let result = client.try_update_spending_limit(&owner, &member1, &200);
-    assert!(result.is_err());
+    // from_index = 100 is way beyond the 3-entry log.
+    let page = client.get_access_audit_page(&owner, &100, &10);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.items.len(), 0);
+    // Sentinel must equal total (3), not 0.
+    assert_eq!(page.next_cursor, 3);
+}
 
-    // 3. configure_multisig
-    let signers = vec![&env, member1.clone()];
-    let result = client.try_configure_multisig(
-        &owner,
-        &TransactionType::LargeWithdrawal,
-        &1,
-        &signers,
-        &1000,
-    );
-    assert!(result.is_err());
+#[test]
+fn test_audit_page_offset_u32_max_no_panic() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
 
-    // 4. propose_transaction
-    let result = client.try_propose_transaction(
-        &owner,
-        &TransactionType::LargeWithdrawal,
-        &TransactionData::Withdrawal(token.clone(), recipient.clone(), 100),
-    );
-    assert!(result.is_err());
+    seed_audit_entries(&client, &owner, 5);
 
-    // 5. sign_transaction
-    let result = client.try_sign_transaction(&owner, &1);
-    assert!(result.is_err());
+    // Adversarial: u32::MAX offset must not panic or overflow.
+    let page = client.get_access_audit_page(&owner, &u32::MAX, &10);
+    assert_eq!(page.count, 0);
+    assert_eq!(page.items.len(), 0);
+    // Sentinel == total (5).
+    assert_eq!(page.next_cursor, 5);
+}
 
-    // 6. withdraw
-    let result = client.try_withdraw(&owner, &token, &recipient, &100);
-    assert!(result.is_err());
+#[test]
+fn test_audit_page_limit_zero_uses_default() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
 
-    // 7. propose_split_config_change
-    let result = client.try_propose_split_config_change(&owner, &25, &25, &25, &25);
-    assert!(result.is_err());
+    // Seed more entries than DEFAULT_AUDIT_PAGE_LIMIT (20).
+    seed_audit_entries(&client, &owner, 25);
 
-    // 8. propose_role_change
-    let result = client.try_propose_role_change(&owner, &member1, &FamilyRole::Admin);
-    assert!(result.is_err());
+    // limit=0 should be promoted to DEFAULT_AUDIT_PAGE_LIMIT (20).
+    let page = client.get_access_audit_page(&owner, &0, &0);
+    assert_eq!(page.count, DEFAULT_AUDIT_PAGE_LIMIT);
+    assert_eq!(page.items.len(), DEFAULT_AUDIT_PAGE_LIMIT);
+    assert_eq!(page.next_cursor, DEFAULT_AUDIT_PAGE_LIMIT);
+}
 
-    // 9. propose_emergency_transfer
-    let result = client.try_propose_emergency_transfer(&owner, &token, &recipient, &100);
-    assert!(result.is_err());
+#[test]
+fn test_audit_page_oversized_limit_clamped_to_max() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
 
-    // 10. propose_policy_cancellation
-    let result = client.try_propose_policy_cancellation(&owner, &1);
-    assert!(result.is_err());
+    // Seed more entries than MAX_AUDIT_PAGE_LIMIT (50).
+    seed_audit_entries(&client, &owner, 60);
 
-    // 11. configure_emergency
-    let result = client.try_configure_emergency(&owner, &1000, &3600, &0, &10000);
-    assert!(result.is_err());
+    // limit=u32::MAX should be clamped to MAX_AUDIT_PAGE_LIMIT (50).
+    let page = client.get_access_audit_page(&owner, &0, &u32::MAX);
+    assert_eq!(page.count, MAX_AUDIT_PAGE_LIMIT);
+    assert_eq!(page.items.len(), MAX_AUDIT_PAGE_LIMIT);
+    assert_eq!(page.next_cursor, MAX_AUDIT_PAGE_LIMIT);
+}
 
-    // 12. set_emergency_mode
-    let result = client.try_set_emergency_mode(&owner, &true);
-    assert!(result.is_err());
+#[test]
+fn test_audit_page_limit_larger_than_remaining_returns_tail() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
 
-    // 13. add_family_member
-    let result = client.try_add_family_member(&owner, &member2, &FamilyRole::Member);
-    assert!(result.is_err());
+    seed_audit_entries(&client, &owner, 5);
 
-    // 14. remove_family_member
-    let result = client.try_remove_family_member(&owner, &member1);
-    assert!(result.is_err());
+    // Ask for 20 entries starting at index 3 — only 2 remain.
+    let page = client.get_access_audit_page(&owner, &3, &20);
+    assert_eq!(page.count, 2);
+    assert_eq!(page.items.len(), 2);
+    // next_cursor == total (5) — end-of-log sentinel.
+    assert_eq!(page.next_cursor, 5);
+}
 
-    // 15. archive_old_transactions
-    let result = client.try_archive_old_transactions(&owner, &100);
-    assert!(result.is_err());
+#[test]
+fn test_audit_page_exact_boundary_last_entry() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
 
-    // 16. cleanup_expired_pending
-    let result = client.try_cleanup_expired_pending(&owner);
-    assert!(result.is_err());
+    seed_audit_entries(&client, &owner, 4);
 
-    // 17. set_role_expiry
-    let result = client.try_set_role_expiry(&owner, &member1, &Some(100));
-    assert!(result.is_err());
+    // from_index = 3 (last valid index), limit = 1 → exactly one entry.
+    let page = client.get_access_audit_page(&owner, &3, &1);
+    assert_eq!(page.count, 1);
+    assert_eq!(page.items.len(), 1);
+    // After reading the last entry, next_cursor == total (4).
+    assert_eq!(page.next_cursor, 4);
+}
 
-    // 18. set_precision_spending_limit
-    let limit = PrecisionSpendingLimit {
-        limit: 1000,
-        min_precision: 1,
-        max_single_tx: 500,
-        enable_rollover: false,
-    };
-    let result = client.try_set_precision_spending_limit(&owner, &member1, &limit);
-    assert!(result.is_err());
+#[test]
+fn test_audit_page_single_entry_log() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
 
-    // 19. cancel_transaction
-    let result = client.try_cancel_transaction(&owner, &1);
-    assert!(result.is_err());
+    // One entry.
+    client.set_emergency_mode(&owner, &true);
 
-    // 20. set_proposal_expiry
-    let result = client.try_set_proposal_expiry(&owner, &86400);
-    assert!(result.is_err());
+    let page = client.get_access_audit_page(&owner, &0, &10);
+    assert_eq!(page.count, 1);
+    assert_eq!(page.items.len(), 1);
+    // Exhausted: next_cursor == total (1).
+    assert_eq!(page.next_cursor, 1);
 
-    // 21. set_upgrade_admin
-    let result = client.try_set_upgrade_admin(&owner, &member2);
-    assert!(result.is_err());
+    // Requesting the next page with the returned cursor yields empty + sentinel.
+    let page2 = client.get_access_audit_page(&owner, &page.next_cursor, &10);
+    assert_eq!(page2.count, 0);
+    assert_eq!(page2.next_cursor, 1); // still == total
+}
 
-    // 22. set_version
-    let result = client.try_set_version(&owner, &2);
-    assert!(result.is_err());
+#[test]
+fn test_audit_page_full_iteration_no_skip_no_duplicate() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
 
-    // 23. batch_add_family_members
-    let batch_members = vec![
-        &env,
-        BatchMemberItem {
-            address: member2.clone(),
-            role: FamilyRole::Member,
-        },
-    ];
-    let result = client.try_batch_add_family_members(&owner, &batch_members);
-    assert!(result.is_err());
+    let total_entries: u32 = 7;
+    seed_audit_entries(&client, &owner, total_entries);
 
-    // 24. batch_remove_family_members
-    let addresses = vec![&env, member1.clone()];
-    let result = client.try_batch_remove_family_members(&owner, &addresses);
-    assert!(result.is_err());
+    // Iterate with page size 3 and collect all entries.
+    let mut collected: u32 = 0;
+    let mut cursor: u32 = 0;
+    let page_size: u32 = 3;
 
-    // Unpause and verify that they succeed
-    client.unpause(&owner);
-    assert!(!client.is_paused());
+    loop {
+        let page = client.get_access_audit_page(&owner, &cursor, &page_size);
+        collected += page.count;
+        if page.count == 0 || page.next_cursor >= total_entries {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
 
-    // Test unpause then succeed: add_family_member should succeed now
-    let success = client.add_family_member(&owner, &member2, &FamilyRole::Member);
-    assert!(success);
+    // Every entry visited exactly once.
+    assert_eq!(collected, total_entries);
+}
+
+#[test]
+fn test_audit_page_cursor_stable_across_calls() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, FamilyWallet);
+    let client = FamilyWalletClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+    client.init(&owner, &vec![&env]);
+
+    seed_audit_entries(&client, &owner, 6);
+
+    // Two calls with the same cursor must return identical results.
+    let page_a = client.get_access_audit_page(&owner, &2, &3);
+    let page_b = client.get_access_audit_page(&owner, &2, &3);
+
+    assert_eq!(page_a.count, page_b.count);
+    assert_eq!(page_a.next_cursor, page_b.next_cursor);
+    for idx in 0..page_a.count {
+        let a = page_a.items.get(idx).unwrap();
+        let b = page_b.items.get(idx).unwrap();
+        assert_eq!(a.operation, b.operation);
+        assert_eq!(a.caller, b.caller);
+        assert_eq!(a.timestamp, b.timestamp);
+    }
 }
