@@ -176,10 +176,17 @@ impl From<JsonValueBinary> for serde_json::Value {
             JsonValueBinary::Number(n) => match n {
                 JsonNumberBinary::I64(i) => serde_json::Value::Number(i.into()),
                 JsonNumberBinary::U64(u) => serde_json::Value::Number(u.into()),
-                JsonNumberBinary::F64(f) => serde_json::Value::Number(
-                    serde_json::Number::from_f64(f)
-                        .expect("JSON number must be finite and representable"),
-                ),
+                JsonNumberBinary::F64(f) => {
+                    // `from_f64` can return `None` for NaN/Infinity. Avoid panicking
+                    // to satisfy `clippy::expect_used` deny in non-test builds.
+                    if let Some(n) = serde_json::Number::from_f64(f) {
+                        serde_json::Value::Number(n)
+                    } else {
+                        // Represent non-finite numbers as JSON strings to preserve
+                        // the original value without panicking during linting.
+                        serde_json::Value::String(f.to_string())
+                    }
+                }
             },
             JsonValueBinary::String(s) => serde_json::Value::String(s),
             JsonValueBinary::Array(arr) => serde_json::Value::Array(arr.into_iter().map(serde_json::Value::from).collect()),
