@@ -240,54 +240,122 @@ fn restore_at_cap_returns_false() {
 
 // ---------------------------------------------------------------------------
 // Bounds validation for premiums and coverage
-// NOTE: These tests are for planned features (bounds validation) that have
-// not been implemented yet. They reference non-existent constants
-// (MAX_MONTHLY_PREMIUM, MAX_COVERAGE_AMOUNT) and error codes
-// (MonthlyPremiumTooHigh, CoverageAmountTooHigh). Commenting out until
-// bounds validation is implemented.
+// These tests verify rejection of non-positive values, enforcement of upper
+// bounds, and overflow-safe aggregation at the per-owner policy cap.
 // ---------------------------------------------------------------------------
 
-// #[test]
-// fn bounds_monthly_premium_too_high() {
-//     let env = make_env();
-//     let (owner, client) = setup(&env);
-//     let result = client.try_create_policy(
-//         &owner,
-//         &String::from_str(&env, "Policy"),
-//         &CoverageType::Health,
-//         &(MAX_MONTHLY_PREMIUM + 1),
-//         &10_000i128,
-//         &None,
-//     );
-//     assert_eq!(result, Err(Ok(InsuranceError::MonthlyPremiumTooHigh)));
-// }
+#[test]
+fn bounds_monthly_premium_too_high() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+    let result = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &(MAX_MONTHLY_PREMIUM + 1),
+        &10_000i128,
+        &None,
+    );
+    assert_eq!(result, Err(Ok(InsuranceError::MonthlyPremiumTooHigh)));
+}
 
-// #[test]
-// fn bounds_coverage_amount_too_high() {
-//     let env = make_env();
-//     let (owner, client) = setup(&env);
-//     let result = client.try_create_policy(
-//         &owner,
-//         &String::from_str(&env, "Policy"),
-//         &CoverageType::Health,
-//         &100i128,
-//         &(MAX_COVERAGE_AMOUNT + 1),
-//         &None,
-//     );
-//     assert_eq!(result, Err(Ok(InsuranceError::CoverageAmountTooHigh)));
-// }
+#[test]
+fn bounds_coverage_amount_too_high() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+    let result = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &100i128,
+        &(MAX_COVERAGE_AMOUNT + 1),
+        &None,
+    );
+    assert_eq!(result, Err(Ok(InsuranceError::CoverageAmountTooHigh)));
+}
 
-// #[test]
-// fn bounds_max_values_succeed() {
-//     let env = make_env();
-//     let (owner, client) = setup(&env);
-//     let id = client.create_policy(
-//         &owner,
-//         &String::from_str(&env, "Policy"),
-//         &CoverageType::Health,
-//         &MAX_MONTHLY_PREMIUM,
-//         &MAX_COVERAGE_AMOUNT,
-//         &None,
-//     );
-//     assert!(id > 0);
-// }
+#[test]
+fn bounds_max_values_succeed() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+    let id = client.create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &MAX_MONTHLY_PREMIUM,
+        &MAX_COVERAGE_AMOUNT,
+        &None,
+    );
+    assert!(id > 0);
+}
+
+#[test]
+fn bounds_monthly_premium_nonpositive_rejected() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+
+    let r0 = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &0i128,
+        &10_000i128,
+        &None,
+    );
+    assert_eq!(r0, Err(Ok(InsuranceError::MonthlyPremiumTooLow)));
+
+    let rneg = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &-1i128,
+        &10_000i128,
+        &None,
+    );
+    assert_eq!(rneg, Err(Ok(InsuranceError::MonthlyPremiumTooLow)));
+}
+
+#[test]
+fn bounds_coverage_amount_nonpositive_rejected() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+
+    let r0 = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &100i128,
+        &0i128,
+        &None,
+    );
+    assert_eq!(r0, Err(Ok(InsuranceError::CoverageAmountTooLow)));
+
+    let rneg = client.try_create_policy(
+        &owner,
+        &String::from_str(&env, "Policy"),
+        &CoverageType::Health,
+        &100i128,
+        &-1i128,
+        &None,
+    );
+    assert_eq!(rneg, Err(Ok(InsuranceError::CoverageAmountTooLow)));
+}
+
+#[test]
+fn overflow_safe_aggregation_at_cap() {
+    let env = make_env();
+    let (owner, client) = setup(&env);
+
+    let name = String::from_str(&env, "BigPremium");
+    let coverage_type = CoverageType::Health;
+
+    for _ in 0..MAX_POLICIES_PER_OWNER {
+        client.create_policy(&owner, &name, &coverage_type, &MAX_MONTHLY_PREMIUM, &10_000i128, &None);
+    }
+
+    let total = client.get_total_monthly_premium(&owner);
+    assert_eq!(
+        total,
+        MAX_MONTHLY_PREMIUM.saturating_mul(MAX_POLICIES_PER_OWNER as i128)
+    );
+}
