@@ -595,3 +595,293 @@ fn test_execute_mixed_due_not_due() {
 pub fn set_time(env: &Env, timestamp: u64) {
     env.ledger().set_timestamp(timestamp);
 }
+
+// ============================================================================
+// Set Pause Admin Tests
+// ============================================================================
+
+#[test]
+fn test_set_pause_admin_by_owner() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let new_pause_admin = Address::generate(&env);
+    
+    // Owner can set pause admin
+    client.set_pause_admin(&owner, &new_pause_admin).unwrap();
+
+    // Verify storage mutation
+    assert_eq!(client.get_pause_admin_public(), Some(new_pause_admin.clone()));
+
+    // Verify event emission
+    let events = env.events().all();
+    let adm_xfr_event = events
+        .iter()
+        .find(|event| {
+            let topics = &event.1;
+            topics.len() == 2 && topics.get(1) == Some(&symbol_short!("adm_xfr"))
+        })
+        .expect("adm_xfr event not found");
+
+    let (_, _, data) = adm_xfr_event;
+    let (old_admin, new_admin): (Option<Address>, Address) = data.try_into_val(&env).unwrap();
+    assert_eq!(old_admin, None); // No previous pause admin
+    assert_eq!(new_admin, new_pause_admin);
+}
+
+#[test]
+fn test_set_pause_admin_unauthorized_caller() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let unauthorized_caller = Address::generate(&env);
+    let new_pause_admin = Address::generate(&env);
+
+    // Record initial state
+    let initial_pause_admin = client.get_pause_admin_public();
+
+    // Unauthorized caller should be rejected
+    let result = client.try_set_pause_admin(&unauthorized_caller, &new_pause_admin);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
+
+    // Verify no storage mutation occurred
+    assert_eq!(client.get_pause_admin_public(), initial_pause_admin);
+}
+
+#[test]
+fn test_set_pause_admin_self_transfer() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let pause_admin = Address::generate(&env);
+    client.set_pause_admin(&owner, &pause_admin).unwrap();
+
+    let initial_pause_admin = client.get_pause_admin_public();
+
+    // Self-transfer should be idempotent (allowed but no change)
+    client.set_pause_admin(&owner, &pause_admin).unwrap();
+
+    // Verify storage unchanged (idempotent)
+    assert_eq!(client.get_pause_admin_public(), initial_pause_admin);
+}
+
+#[test]
+fn test_set_pause_admin_double_transfer() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let pause_admin1 = Address::generate(&env);
+    let pause_admin2 = Address::generate(&env);
+
+    // First transfer
+    client.set_pause_admin(&owner, &pause_admin1).unwrap();
+    assert_eq!(client.get_pause_admin_public(), Some(pause_admin1.clone()));
+
+    // Second transfer
+    client.set_pause_admin(&owner, &pause_admin2).unwrap();
+    assert_eq!(client.get_pause_admin_public(), Some(pause_admin2.clone()));
+
+    // Verify two events were emitted
+    let events = env.events().all();
+    let adm_xfr_events: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            let topics = &event.1;
+            topics.len() == 2 && topics.get(1) == Some(&symbol_short!("adm_xfr"))
+        })
+        .collect();
+
+    assert_eq!(adm_xfr_events.len(), 2);
+}
+
+#[test]
+fn test_set_pause_admin_when_paused() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let pause_admin = Address::generate(&env);
+    client.set_pause_admin(&owner, &pause_admin).unwrap();
+
+    // Pause the contract
+    client.pause(&pause_admin).unwrap();
+    assert!(client.is_paused());
+
+    let new_pause_admin = Address::generate(&env);
+
+    // Transfer should fail when contract is paused
+    let result = client.try_set_pause_admin(&owner, &new_pause_admin);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
+
+    // Verify no storage mutation
+    assert_eq!(client.get_pause_admin_public(), Some(pause_admin));
+}
+
+// ============================================================================
+// Set Upgrade Admin Tests
+// ============================================================================
+
+#[test]
+fn test_set_upgrade_admin_by_owner_initial() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let new_upgrade_admin = Address::generate(&env);
+
+    // Owner can set initial upgrade admin
+    client.set_upgrade_admin(&owner, &new_upgrade_admin).unwrap();
+
+    // Verify storage mutation
+    assert_eq!(client.get_upgrade_admin_public(), Some(new_upgrade_admin.clone()));
+
+    // Verify event emission
+    let events = env.events().all();
+    let adm_xfr_event = events
+        .iter()
+        .find(|event| {
+            let topics = &event.1;
+            topics.len() == 2 && topics.get(1) == Some(&symbol_short!("adm_xfr"))
+        })
+        .expect("adm_xfr event not found");
+
+    let (_, _, data) = adm_xfr_event;
+    let (old_admin, new_admin): (Option<Address>, Address) = data.try_into_val(&env).unwrap();
+    assert_eq!(old_admin, None); // No previous upgrade admin
+    assert_eq!(new_admin, new_upgrade_admin);
+}
+
+#[test]
+fn test_set_upgrade_admin_by_current_admin() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let upgrade_admin1 = Address::generate(&env);
+    client.set_upgrade_admin(&owner, &upgrade_admin1).unwrap();
+
+    let upgrade_admin2 = Address::generate(&env);
+
+    // Current admin can transfer to new admin
+    client.set_upgrade_admin(&upgrade_admin1, &upgrade_admin2).unwrap();
+
+    // Verify storage mutation
+    assert_eq!(client.get_upgrade_admin_public(), Some(upgrade_admin2.clone()));
+
+    // Verify event emission
+    let events = env.events().all();
+    let adm_xfr_events: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            let topics = &event.1;
+            topics.len() == 2 && topics.get(1) == Some(&symbol_short!("adm_xfr"))
+        })
+        .collect();
+
+    assert_eq!(adm_xfr_events.len(), 2);
+
+    // Check the second event (transfer from admin1 to admin2)
+    let (_, _, data) = &adm_xfr_events[1];
+    let (old_admin, new_admin): (Option<Address>, Address) = data.try_into_val(&env).unwrap();
+    assert_eq!(old_admin, Some(upgrade_admin1));
+    assert_eq!(new_admin, upgrade_admin2);
+}
+
+#[test]
+fn test_set_upgrade_admin_unauthorized_caller() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    // Test 1: Unauthorized caller when no admin is set
+    let unauthorized_caller = Address::generate(&env);
+    let new_upgrade_admin = Address::generate(&env);
+
+    let result = client.try_set_upgrade_admin(&unauthorized_caller, &new_upgrade_admin);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
+    assert_eq!(client.get_upgrade_admin_public(), None);
+
+    // Test 2: Set an admin first
+    let upgrade_admin = Address::generate(&env);
+    client.set_upgrade_admin(&owner, &upgrade_admin).unwrap();
+
+    // Test 3: Unauthorized caller when admin is set
+    let result = client.try_set_upgrade_admin(&unauthorized_caller, &new_upgrade_admin);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
+    assert_eq!(client.get_upgrade_admin_public(), Some(upgrade_admin));
+}
+
+#[test]
+fn test_set_upgrade_admin_self_transfer() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let upgrade_admin = Address::generate(&env);
+    client.set_upgrade_admin(&owner, &upgrade_admin).unwrap();
+
+    let initial_upgrade_admin = client.get_upgrade_admin_public();
+
+    // Self-transfer should be idempotent (allowed but no change)
+    client.set_upgrade_admin(&upgrade_admin, &upgrade_admin).unwrap();
+
+    // Verify storage unchanged (idempotent)
+    assert_eq!(client.get_upgrade_admin_public(), initial_upgrade_admin);
+}
+
+#[test]
+fn test_set_upgrade_admin_double_transfer() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let upgrade_admin1 = Address::generate(&env);
+    let upgrade_admin2 = Address::generate(&env);
+
+    // First transfer by owner
+    client.set_upgrade_admin(&owner, &upgrade_admin1).unwrap();
+    assert_eq!(client.get_upgrade_admin_public(), Some(upgrade_admin1.clone()));
+
+    // Second transfer by admin1
+    client.set_upgrade_admin(&upgrade_admin1, &upgrade_admin2).unwrap();
+    assert_eq!(client.get_upgrade_admin_public(), Some(upgrade_admin2));
+
+    // Verify two admin transfer events were emitted
+    let events = env.events().all();
+    let adm_xfr_events: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            let topics = &event.1;
+            topics.len() == 2 && topics.get(1) == Some(&symbol_short!("adm_xfr"))
+        })
+        .collect();
+
+    assert_eq!(adm_xfr_events.len(), 2);
+
+    // Check the first event (transfer from owner to admin1)
+    let (_, _, data) = &adm_xfr_events[0];
+    let (old_admin, new_admin): (Option<Address>, Address) = data.try_into_val(&env).unwrap();
+    assert_eq!(old_admin, None); // No previous upgrade admin
+    assert_eq!(new_admin, upgrade_admin1);
+
+    // Check the second event (transfer from admin1 to admin2)
+    let (_, _, data) = &adm_xfr_events[1];
+    let (old_admin, new_admin): (Option<Address>, Address) = data.try_into_val(&env).unwrap();
+    assert_eq!(old_admin, Some(upgrade_admin1));
+    assert_eq!(new_admin, upgrade_admin2);
+}
+
+#[test]
+fn test_set_upgrade_admin_owner_cannot_override_after_initial_set() {
+    let env = Env::default();
+    let (client, owner, _token_addr, _) = setup_split(&env, 50, 30, 15, 5);
+
+    let upgrade_admin1 = Address::generate(&env);
+    let upgrade_admin2 = Address::generate(&env);
+
+    // Owner sets initial admin
+    client.set_upgrade_admin(&owner, &upgrade_admin1).unwrap();
+    assert_eq!(client.get_upgrade_admin_public(), Some(upgrade_admin1.clone()));
+
+    // Owner should NOT be able to override once admin is set
+    let result = client.try_set_upgrade_admin(&owner, &upgrade_admin2);
+    assert_eq!(result, Err(Ok(RemittanceSplitError::Unauthorized)));
+
+    // Verify no storage mutation
+    assert_eq!(client.get_upgrade_admin_public(), Some(upgrade_admin1));
+}
