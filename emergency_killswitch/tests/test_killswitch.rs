@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use emergency_killswitch::{EmergencyKillswitch, EmergencyKillswitchClient};
+use emergency_killswitch::{EmergencyKillswitch, EmergencyKillswitchClient, Error};
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Ledger},
@@ -16,7 +16,7 @@ fn test_unauthorized_emergency_trigger() {
     let admin = Address::generate(&env);
     client.initialize(&admin);
 
-    let unauthorized = Address::generate(&env);
+    let _unauthorized = Address::generate(&env);
 
     // We expect a panic when require_auth fails if mock_all_auths is not set
     // or we can use mock_auths to simulate a different caller.
@@ -43,6 +43,91 @@ fn test_authorized_emergency_flow() {
     env.ledger().set_timestamp(future);
     client.unpause();
     assert!(!client.is_paused());
+}
+
+#[test]
+fn test_premature_unpause_rejection() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, EmergencyKillswitch);
+    let client = EmergencyKillswitchClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    client.pause();
+    assert!(client.is_paused());
+
+    // Schedule unpause in the future
+    let future = env.ledger().timestamp() + 3600;
+    client.schedule_unpause(&future);
+
+    // Try to unpause before scheduled time (1 second before)
+    env.ledger().set_timestamp(future - 1);
+    let result = client.try_unpause();
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+    assert!(client.is_paused());
+
+    // Unpause at exact boundary
+    env.ledger().set_timestamp(future);
+    client.unpause();
+    assert!(!client.is_paused());
+}
+
+#[test]
+fn test_re_pause_cancels_schedule() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, EmergencyKillswitch);
+    let client = EmergencyKillswitchClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    client.pause();
+    assert!(client.is_paused());
+
+    // Schedule unpause in the future
+    let future = env.ledger().timestamp() + 3600;
+    client.schedule_unpause(&future);
+
+    // Call pause again (this should cancel/reset the pending schedule)
+    client.pause();
+
+    // Advance ledger to the previously scheduled future time
+    env.ledger().set_timestamp(future);
+
+    // Try to unpause. It should fail because the schedule was cancelled/removed on re-pause.
+    let result = client.try_unpause();
+    assert_eq!(result, Err(Ok(Error::InvalidSchedule)));
+    assert!(client.is_paused());
+}
+
+#[test]
+fn test_timelock_bypass_rejection() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register_contract(None, EmergencyKillswitch);
+    let client = EmergencyKillswitchClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    client.pause();
+    assert!(client.is_paused());
+
+    // Set initial ledger time
+    env.ledger().set_timestamp(1000);
+
+    // Try to schedule unpause with a past timestamp (e.g. 999)
+    let result1 = client.try_schedule_unpause(&999);
+    assert_eq!(result1, Err(Ok(Error::InvalidSchedule)));
+
+    // Try to schedule unpause with the exact current timestamp (1000) - this is allowed/valid
+    client.schedule_unpause(&1000);
 }
 
 #[test]

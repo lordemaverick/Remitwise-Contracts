@@ -11,6 +11,7 @@ pub enum Error {
     AlreadyInitialized = 2,
     NotInitialized = 3,
     LimitExceeded = 4,
+    InvalidSchedule = 5,
 }
 
 #[contracttype]
@@ -49,6 +50,8 @@ impl EmergencyKillswitch {
         Ok(())
     }
 
+    /// Pauses the contract globally.
+    /// Invariant: A new pause cancels any pending schedule.
     pub fn pause(env: Env) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -58,6 +61,9 @@ impl EmergencyKillswitch {
         admin.require_auth();
         env.storage().instance().set(&DataKey::GlobalPaused, &true);
 
+        // Cancel any pending unpause schedule on new pause
+        env.storage().instance().remove(&DataKey::UnpauseSchedule);
+
         env.events().publish(
             (symbol_short!("emergency"), symbol_short!("paused")),
             (symbol_short!("GLOBAL"), env.ledger().timestamp()),
@@ -65,6 +71,9 @@ impl EmergencyKillswitch {
         Ok(())
     }
 
+    /// Lifts the global pause state.
+    /// Invariant: An unpause cannot take effect before the scheduled time.
+    /// Enforces env.ledger().timestamp() >= scheduled_time.
     pub fn unpause(env: Env) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -73,11 +82,14 @@ impl EmergencyKillswitch {
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
 
-        let schedule: Option<u64> = env.storage().instance().get(&DataKey::UnpauseSchedule);
-        if let Some(time) = schedule {
-            if env.ledger().timestamp() < time {
-                return Err(Error::Unauthorized); // Or a better error code
-            }
+        let schedule: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::UnpauseSchedule)
+            .ok_or(Error::InvalidSchedule)?;
+
+        if env.ledger().timestamp() < schedule {
+            return Err(Error::Unauthorized);
         }
 
         env.storage().instance().set(&DataKey::GlobalPaused, &false);
@@ -90,6 +102,9 @@ impl EmergencyKillswitch {
         Ok(())
     }
 
+    /// Records a future unpause time.
+    /// Invariant: The timelock cannot be bypassed by re-calling schedule_unpause with a past timestamp.
+    /// Rejects past-dated schedules (time < env.ledger().timestamp()).
     pub fn schedule_unpause(env: Env, time: u64) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -97,6 +112,11 @@ impl EmergencyKillswitch {
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+
+        if time < env.ledger().timestamp() {
+            return Err(Error::InvalidSchedule);
+        }
+
         env.storage()
             .instance()
             .set(&DataKey::UnpauseSchedule, &time);
