@@ -204,14 +204,8 @@ fn test_batch_add_to_goals_duplicate_goal_ids_use_updated_balance() {
     assert_eq!(current, starting_balance);
 
     let mut contributions = Vec::new(&env);
-    contributions.push_back(ContributionItem {
-        goal_id,
-        amount: 1,
-    });
-    contributions.push_back(ContributionItem {
-        goal_id,
-        amount: 1,
-    });
+    contributions.push_back(ContributionItem { goal_id, amount: 1 });
+    contributions.push_back(ContributionItem { goal_id, amount: 1 });
 
     env.mock_all_auths();
     let processed = client.batch_add_to_goals(&owner, &contributions);
@@ -239,10 +233,7 @@ fn test_batch_add_to_goals_rejects_zero_and_negative_amounts() {
     );
 
     let mut zero_batch = Vec::new(&env);
-    zero_batch.push_back(ContributionItem {
-        goal_id,
-        amount: 0,
-    });
+    zero_batch.push_back(ContributionItem { goal_id, amount: 0 });
 
     env.mock_all_auths();
     let zero_result = client.try_batch_add_to_goals(&owner, &zero_batch);
@@ -283,10 +274,7 @@ fn test_batch_add_to_goals_rejects_oversized_batch() {
 
     let mut contributions = Vec::new(&env);
     for _ in 0..51 {
-        contributions.push_back(ContributionItem {
-            goal_id,
-            amount: 1,
-        });
+        contributions.push_back(ContributionItem { goal_id, amount: 1 });
     }
 
     env.mock_all_auths();

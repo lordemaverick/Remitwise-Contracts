@@ -10,10 +10,7 @@
 
 #[cfg(test)]
 mod goal_completed_event_tests {
-    use soroban_sdk::{
-        testutils::Events,
-        vec, Env, IntoVal, Symbol,
-    };
+    use soroban_sdk::{testutils::Events, vec, Env, IntoVal, Symbol};
 
     // Import the contract and its types — adjust the path if your crate is named differently
     use crate::{SavingsGoalsContract, SavingsGoalsContractClient};
@@ -21,7 +18,11 @@ mod goal_completed_event_tests {
     // Helpers
 
     /// Deploy the contract and return (env, client, owner_address).
-    fn setup() -> (Env, SavingsGoalsContractClient<'static>, soroban_sdk::Address) {
+    fn setup() -> (
+        Env,
+        SavingsGoalsContractClient<'static>,
+        soroban_sdk::Address,
+    ) {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register_contract(None, SavingsGoalsContract);
@@ -140,7 +141,6 @@ mod goal_completed_event_tests {
 
     // Test 4 — Post-completion add does NOT re-emit GoalCompleted
 
-
     /// Once a goal is completed, subsequent `add_to_goal` calls must not
     /// emit additional `GoalCompleted` events. This prevents double-triggering
     /// downstream indexers and notification services.
@@ -196,7 +196,6 @@ mod goal_completed_event_tests {
         );
     }
 
-
     // Test 6 — batch_add_to_goals: completing one goal emits once
 
     /// Using `batch_add_to_goals`, completing one goal in a batch emits
@@ -214,10 +213,7 @@ mod goal_completed_event_tests {
 
         // batch_add_to_goals — adjust the call signature to match the real API
         // This assumes it takes a Vec of (goal_id, amount) tuples
-        client.batch_add_to_goals(
-            &owner,
-            &vec![&env, (goal_id.clone(), 1_000_i128)],
-        );
+        client.batch_add_to_goals(&owner, &vec![&env, (goal_id.clone(), 1_000_i128)]);
 
         assert_eq!(
             count_completed_events(&env),
@@ -228,7 +224,6 @@ mod goal_completed_event_tests {
     }
 
     // Test 7 — batch_add_to_goals: completing multiple goals emits one per goal
-    
 
     #[test]
     fn test_batch_add_completes_two_goals_emits_two_events() {
@@ -281,10 +276,7 @@ mod goal_completed_event_tests {
         assert_eq!(count_completed_events(&env), 1);
 
         // Now include the same completed goal in a batch
-        client.batch_add_to_goals(
-            &owner,
-            &vec![&env, (goal_id.clone(), 100_i128)],
-        );
+        client.batch_add_to_goals(&owner, &vec![&env, (goal_id.clone(), 100_i128)]);
 
         assert_eq!(
             count_completed_events(&env),

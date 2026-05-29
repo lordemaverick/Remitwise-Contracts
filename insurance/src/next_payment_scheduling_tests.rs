@@ -6,7 +6,8 @@ use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
     Address, Env, String, TryFromVal, Val, Vec as SorobanVec,
 };
-use std::vec::Vec as StdVec;
+extern crate alloc;
+use alloc::vec::Vec as StdVec;
 
 const PERIOD: u64 = 30 * 86_400;
 

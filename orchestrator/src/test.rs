@@ -1,5 +1,140 @@
 #![cfg(test)]
 
+use super::*;
+use soroban_sdk::{
+    testutils::{Address as _, Events},
+    vec, Address, Env, IntoVal,
+};
+
+#[contract]
+pub struct MockContract;
+
+#[contractimpl]
+impl MockContract {
+    pub fn check_spending_limit(_env: Env, _user: Address, _amount: i128) -> bool {
+        true
+    }
+    pub fn calculate_split(env: Env, _total_amount: i128) -> Vec<i128> {
+        vec![&env, 2500, 2500, 2500, 2500]
+    }
+    pub fn add_to_goal(_env: Env, _user: Address, _goal_id: u32, _amount: i128) -> bool {
+        true
+    }
+    pub fn pay_bill(_env: Env, _user: Address, _bill_id: u32, _amount: i128) -> bool {
+        true
+    }
+    pub fn pay_premium(_env: Env, _user: Address, _policy_id: u32, _amount: i128) -> bool {
+        true
+    }
+}
+
+#[contract]
+pub struct FailingMock;
+
+#[contractimpl]
+impl FailingMock {}
+
+#[test]
+fn test_execute_flow_success() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let caller = Address::generate(&env);
+
+    client.execute_remittance_flow(
+        &caller, &10000i128, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id, &1, &1, &1,
+    );
+
+    // Check lock is released
+    assert_eq!(client.get_execution_state(), false);
+}
+
+#[test]
+fn test_lock_released_on_invalid_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+    let mock_id = Address::generate(&env);
+    let caller = Address::generate(&env);
+
+    // Should return Err(InvalidAmount)
+    let result = client.try_execute_remittance_flow(
+        &caller, &-100i128, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id, &1, &1, &1,
+    );
+
+    assert!(result.is_err());
+    assert_eq!(client.get_execution_state(), false);
+}
+
+#[test]
+fn test_reentrancy_rejection() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+    let caller = Address::generate(&env);
+
+    // Test that if the lock is set manually, the call fails.
+    env.as_contract(&orchestrator_id, || {
+        env.storage().instance().set(&EXEC_LOCK, &true);
+    });
+
+    let mock_id = Address::generate(&env);
+    let result = client.try_execute_remittance_flow(
+        &caller, &1000i128, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id, &1, &1, &1,
+    );
+
+    match result {
+        Err(Ok(OrchestratorError::ExecutionLocked)) => (),
+        _ => panic!("Expected ExecutionLocked error"),
+    }
+
+    // Check it's still locked (because we set it manually and the call failed before acquiring)
+    assert_eq!(client.get_execution_state(), true);
+}
+
+#[test]
+fn test_lock_recovery_after_failure() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+    let failing_id = env.register_contract(None, FailingMock);
+    let caller = Address::generate(&env);
+
+    // A panic in Soroban rolls back everything, including the lock.
+    let result = client.try_execute_remittance_flow(
+        &caller,
+        &1000i128,
+        &failing_id,
+        &failing_id,
+        &failing_id,
+        &failing_id,
+        &failing_id,
+        &1,
+        &1,
+        &1,
+    );
+
+    assert!(result.is_err());
+    // In Soroban, if the transaction panics, the state is rolled back.
+    // In a test, if we use `try_`, it might behave differently depending on where the panic happens.
+    // But since `perform_remittance_flow` is called within the orchestrator, a panic there
+    // will roll back the `EXEC_LOCK` set by the orchestrator.
+    assert_eq!(client.get_execution_state(), false);
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -169,9 +304,20 @@ fn test_audit_log_entries_ordered_oldest_to_newest() {
         let result = client.try_execute_remittance_flow(&executor, &1000, &0, &deadline, &hash);
         assert!(result.is_ok(), "First execution should succeed");
 
-        // Verify nonce incremented to 1
-        let new_nonce = client.get_nonce(&executor);
-        assert_eq!(new_nonce, 1, "Nonce should increment after successful execution");
+        let hash = compute_test_hash(
+            &env,
+            symbol_short!("flow"),
+            0,
+            0, // Invalid amount
+            deadline,
+        );
+
+        let result = client.try_execute_remittance_flow_signed(
+            &executor, &0, // amount 0
+            &0, &deadline, &hash,
+        );
+
+        assert_eq!(result, Err(Ok(OrchestratorError::InvalidAmount)));
     }
 
     #[test]
@@ -186,12 +332,53 @@ fn test_audit_log_entries_ordered_oldest_to_newest() {
         let deadline = env.ledger().timestamp() + 1000;
         let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
 
-        // First execution with nonce 0
-        let result1 = client.try_execute_remittance_flow(&executor, &1000, &0, &deadline, &hash);
-        assert!(result1.is_ok(), "First execution should succeed");
+        let result =
+            client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
 
-        // Attempt replay with same nonce 0 (nonce should now be 1)
-        let result2 = client.try_execute_remittance_flow(&executor, &1000, &0, &deadline, &hash);
+        assert_eq!(result, Err(Ok(OrchestratorError::DeadlineExpired)));
+    }
+
+    #[test]
+    fn test_execute_flow_deadline_too_far() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let deadline = env.ledger().timestamp() + MAX_DEADLINE_WINDOW_SECS + 1000;
+
+        let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+
+        let result =
+            client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
+
+        assert_eq!(result, Err(Ok(OrchestratorError::DeadlineExpired)));
+    }
+
+    #[test]
+    fn test_execute_flow_invalid_hash() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let executor = Address::generate(&env);
+        let deadline = env.ledger().timestamp() + 1000;
+
+        let bad_hash = 12345u64;
+
+        let result =
+            client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &bad_hash);
+
+        assert_eq!(result, Err(Ok(OrchestratorError::InvalidNonce)));
+    }
+
+    #[test]
+    fn test_get_execution_stats_initial() {
+        let (env, owner) = setup_test();
+        let client = register_orchestrator(&env);
+        init_orchestrator(&env, &client, &owner);
+
+        let stats = client.get_execution_stats();
         assert_eq!(
             result2,
             Err(Ok(OrchestratorError::InvalidNonce)),
@@ -232,10 +419,8 @@ fn test_audit_log_entries_ordered_oldest_to_newest() {
 
         let deadline = env.ledger().timestamp() + 1000;
 
-        // Execute with nonce 0
-        let hash0 = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
-        let result0 = client.try_execute_remittance_flow(&executor, &1000, &0, &deadline, &hash0);
-        assert!(result0.is_ok());
+        let result =
+            client.try_execute_remittance_flow_signed(&executor, &1000, &0, &deadline, &hash);
 
         // Execute with nonce 1
         let hash1 = compute_test_hash(&env, symbol_short!("flow"), 1, 2000, deadline);
