@@ -52,7 +52,13 @@ fn stress_max_policies_single_user() {
     let coverage_type = CoverageType::Health;
     client.init(&Address::generate(&env)); // Contract owner
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     // Verify aggregate monthly premium
@@ -256,7 +262,13 @@ fn stress_instance_ttl_valid_after_max_policies() {
     let coverage_type = CoverageType::Life;
     client.init(&Address::generate(&env));
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
@@ -329,7 +341,13 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     client.init(&Address::generate(&env));
     // Phase 1: 50 creates
     for _ in 0..50 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     let ttl_batch1 = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
@@ -359,7 +377,13 @@ fn stress_ttl_re_bumped_after_ledger_advancement() {
     );
 
     // Phase 3: create_policy fires extend_ttl → re-bumped
-    client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+    client.create_policy(
+        &owner,
+        &name,
+        &coverage_type,
+        &5_000_000i128,
+        &50_000_000i128,
+    );
 
     let ttl_rebumped = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
     assert!(
@@ -422,7 +446,13 @@ fn stress_batch_pay_premiums_at_max_batch_size() {
     client.init(&Address::generate(&env));
     let mut policy_ids = std::vec![];
     for _ in 0..BATCH_SIZE {
-        let id = client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        let id = client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
         policy_ids.push(id);
     }
 
@@ -466,7 +496,13 @@ fn stress_deactivate_half_of_max_policies() {
     let coverage_type = CoverageType::Life;
     client.init(&Address::generate(&env));
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     // Deactivate odd-indexed policies (half)
@@ -515,7 +551,13 @@ fn bench_get_active_policies_max_policies() {
     let coverage_type = CoverageType::Health;
     client.init(&owner);
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     let (cpu, mem, active) = measure(&env, || client.get_active_policies(&owner, &0u32, &50u32));
@@ -544,7 +586,13 @@ fn bench_get_total_monthly_premium_max_policies() {
     let coverage_type = CoverageType::Health;
     client.init(&Address::generate(&env));
     for _ in 0..200 {
-        client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
     }
 
     let expected = 200i128 * 5_000_000;
@@ -570,7 +618,13 @@ fn bench_batch_pay_premiums_max_policies() {
     client.init(&Address::generate(&env));
     let mut policy_ids = std::vec![];
     for _ in 0..50 {
-        let id = client.create_policy(&owner, &name, &coverage_type, &5_000_000i128, &50_000_000i128);
+        let id = client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &5_000_000i128,
+            &50_000_000i128,
+        );
         policy_ids.push(id);
     }
 

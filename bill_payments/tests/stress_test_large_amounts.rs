@@ -209,7 +209,8 @@ fn test_get_total_unpaid_saturates_on_overflow() {
     // When overflow would occur, result should be i128::MAX
     let total = client.get_total_unpaid(&owner);
     assert_eq!(
-        total, i128::MAX,
+        total,
+        i128::MAX,
         "get_total_unpaid should saturate to i128::MAX on overflow, not panic"
     );
 }
@@ -254,7 +255,8 @@ fn test_get_total_unpaid_by_currency_saturates_on_overflow() {
     // get_total_unpaid_by_currency should saturate on overflow
     let total = client.get_total_unpaid_by_currency(&owner, &String::from_str(&env, "USDC"));
     assert_eq!(
-        total, i128::MAX,
+        total,
+        i128::MAX,
         "get_total_unpaid_by_currency should saturate to i128::MAX on overflow"
     );
 

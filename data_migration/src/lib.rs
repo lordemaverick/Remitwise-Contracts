@@ -158,7 +158,9 @@ impl From<&serde_json::Value> for JsonValueBinary {
                 JsonValueBinary::Number(number)
             }
             serde_json::Value::String(s) => JsonValueBinary::String(s.clone()),
-            serde_json::Value::Array(arr) => JsonValueBinary::Array(arr.iter().map(JsonValueBinary::from).collect()),
+            serde_json::Value::Array(arr) => {
+                JsonValueBinary::Array(arr.iter().map(JsonValueBinary::from).collect())
+            }
             serde_json::Value::Object(map) => JsonValueBinary::Object(
                 map.iter()
                     .map(|(k, v)| (k.clone(), JsonValueBinary::from(v)))
@@ -189,9 +191,13 @@ impl From<JsonValueBinary> for serde_json::Value {
                 }
             },
             JsonValueBinary::String(s) => serde_json::Value::String(s),
-            JsonValueBinary::Array(arr) => serde_json::Value::Array(arr.into_iter().map(serde_json::Value::from).collect()),
+            JsonValueBinary::Array(arr) => {
+                serde_json::Value::Array(arr.into_iter().map(serde_json::Value::from).collect())
+            }
             JsonValueBinary::Object(map) => serde_json::Value::Object(
-                map.into_iter().map(|(k, v)| (k, serde_json::Value::from(v))).collect(),
+                map.into_iter()
+                    .map(|(k, v)| (k, serde_json::Value::from(v)))
+                    .collect(),
             ),
         }
     }
@@ -609,7 +615,11 @@ pub fn export_to_binary(snapshot: &ExportSnapshot) -> Result<Vec<u8>, MigrationE
 /// "123" → "123"
 /// ```
 fn sanitize_csv_field(field: &str) -> String {
-    if field.starts_with('=') || field.starts_with('+') || field.starts_with('-') || field.starts_with('@') {
+    if field.starts_with('=')
+        || field.starts_with('+')
+        || field.starts_with('-')
+        || field.starts_with('@')
+    {
         format!("'{}", field)
     } else {
         field.to_string()
@@ -1902,9 +1912,18 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Verify that the formula character is escaped with a leading quote
-        assert!(csv_string.contains("'=IMPORTXML("), "CSV should escape = with leading quote");
-        assert!(!csv_string.contains(",=IMPORTXML("), "CSV should not contain unescaped formula");
-        assert!(!csv_string.starts_with("=IMPORTXML("), "CSV should not start with an unescaped formula");
+        assert!(
+            csv_string.contains("'=IMPORTXML("),
+            "CSV should escape = with leading quote"
+        );
+        assert!(
+            !csv_string.contains(",=IMPORTXML("),
+            "CSV should not contain unescaped formula"
+        );
+        assert!(
+            !csv_string.starts_with("=IMPORTXML("),
+            "CSV should not start with an unescaped formula"
+        );
     }
 
     #[test]
@@ -1926,7 +1945,10 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Verify that + is escaped
-        assert!(csv_string.contains("'+1+1"), "CSV should escape + with leading quote");
+        assert!(
+            csv_string.contains("'+1+1"),
+            "CSV should escape + with leading quote"
+        );
     }
 
     #[test]
@@ -1948,7 +1970,10 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Verify that - is escaped
-        assert!(csv_string.contains("'-2+3"), "CSV should escape - with leading quote");
+        assert!(
+            csv_string.contains("'-2+3"),
+            "CSV should escape - with leading quote"
+        );
     }
 
     #[test]
@@ -1970,7 +1995,10 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Verify that @ is escaped
-        assert!(csv_string.contains("'@SUM"), "CSV should escape @ with leading quote");
+        assert!(
+            csv_string.contains("'@SUM"),
+            "CSV should escape @ with leading quote"
+        );
     }
 
     #[test]
@@ -1992,8 +2020,14 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Verify that normal text is not escaped
-        assert!(csv_string.contains("John Doe"), "Normal text should not be escaped");
-        assert!(csv_string.contains("Emergency Fund"), "Normal names should not be escaped");
+        assert!(
+            csv_string.contains("John Doe"),
+            "Normal text should not be escaped"
+        );
+        assert!(
+            csv_string.contains("Emergency Fund"),
+            "Normal names should not be escaped"
+        );
     }
 
     #[test]
@@ -2015,7 +2049,10 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Verify that numeric strings are not escaped (they don't start with formula chars)
-        assert!(csv_string.contains("123456"), "Numeric strings should not be escaped");
+        assert!(
+            csv_string.contains("123456"),
+            "Numeric strings should not be escaped"
+        );
     }
 
     #[test]
@@ -2066,11 +2103,20 @@ mod tests {
         let csv_string = String::from_utf8_lossy(&exported_bytes);
 
         // Verify all injections are escaped
-        assert!(csv_string.contains("'=EXPLOIT"), "Should escape = injections");
-        assert!(csv_string.contains("'+HYPERLINK"), "Should escape + injections");
+        assert!(
+            csv_string.contains("'=EXPLOIT"),
+            "Should escape = injections"
+        );
+        assert!(
+            csv_string.contains("'+HYPERLINK"),
+            "Should escape + injections"
+        );
         assert!(csv_string.contains("'-2"), "Should escape - injections");
         // Verify safe content is preserved
-        assert!(csv_string.contains("Safe Goal"), "Safe content should be preserved");
+        assert!(
+            csv_string.contains("Safe Goal"),
+            "Safe content should be preserved"
+        );
     }
 
     #[test]

@@ -74,7 +74,7 @@ fn cap_over_limit_returns_error() {
         &10_000i128,
         &None,
     );
-    
+
     // Expect error: PolicyLimitExceeded
     match result {
         Err(Ok(insurance::InsuranceError::PolicyLimitExceeded)) => {
@@ -365,7 +365,14 @@ fn overflow_safe_aggregation_at_cap() {
     let coverage_type = CoverageType::Health;
 
     for _ in 0..MAX_POLICIES_PER_OWNER {
-        client.create_policy(&owner, &name, &coverage_type, &MAX_MONTHLY_PREMIUM, &10_000i128, &None);
+        client.create_policy(
+            &owner,
+            &name,
+            &coverage_type,
+            &MAX_MONTHLY_PREMIUM,
+            &10_000i128,
+            &None,
+        );
     }
 
     let total = client.get_total_monthly_premium(&owner);

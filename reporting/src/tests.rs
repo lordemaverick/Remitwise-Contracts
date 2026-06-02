@@ -906,7 +906,7 @@ fn test_calculate_health_score_overflow_protection() {
 
     // Test should complete without panicking even with extreme inputs
     let health_score = client.calculate_health_score(&user, &i128::MAX);
-    
+
     // Scores should be bounded
     assert!(health_score.score <= 100);
     assert!(health_score.savings_score <= 40);
@@ -942,7 +942,7 @@ fn test_calculate_health_score_no_unpaid_bills() {
     );
 
     let health_score = client.calculate_health_score(&user, &10000);
-    
+
     // With unpaid bills (none overdue), bills_score should be 35
     assert_eq!(health_score.bills_score, 35);
 }
@@ -975,7 +975,7 @@ fn test_calculate_health_score_no_insurance() {
     );
 
     let health_score = client.calculate_health_score(&user, &10000);
-    
+
     // With insurance, insurance_score should be 20
     assert_eq!(health_score.insurance_score, 20);
 }
@@ -1010,15 +1010,18 @@ fn test_calculate_health_score_bounds_guarantee() {
     // Test multiple times to ensure consistency
     for _ in 0..10 {
         let health_score = client.calculate_health_score(&user, &10000);
-        
+
         // All scores must be within bounds
         assert!(health_score.score >= 0 && health_score.score <= 100);
         assert!(health_score.savings_score >= 0 && health_score.savings_score <= 40);
         assert!(health_score.bills_score >= 0 && health_score.bills_score <= 40);
         assert!(health_score.insurance_score >= 0 && health_score.insurance_score <= 20);
-        
+
         // Total should equal sum of components
-        assert_eq!(health_score.score, health_score.savings_score + health_score.bills_score + health_score.insurance_score);
+        assert_eq!(
+            health_score.score,
+            health_score.savings_score + health_score.bills_score + health_score.insurance_score
+        );
     }
 }
 

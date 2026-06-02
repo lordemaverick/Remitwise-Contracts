@@ -875,18 +875,17 @@ fn stress_cancel_frees_slot_at_cap() {
     let due_date = 2_000_000_000u64;
 
     // Fill to cap; record the first bill ID
-    let first_id = client
-        .create_bill(
-            &owner,
-            &name,
-            &1i128,
-            &due_date,
-            &false,
-            &0u32,
-            &None,
-            &String::from_str(&env, "XLM"),
-            &None,
-        );
+    let first_id = client.create_bill(
+        &owner,
+        &name,
+        &1i128,
+        &due_date,
+        &false,
+        &0u32,
+        &None,
+        &String::from_str(&env, "XLM"),
+        &None,
+    );
     for _ in 1..MAX_BILLS_PER_OWNER {
         client.create_bill(
             &owner,
@@ -1065,7 +1064,10 @@ fn stress_unpaid_bills_by_currency_pagination() {
             &cursor,
             &50u32,
         );
-        assert!(page.count <= 50, "Page count must not exceed MAX_PAGE_LIMIT");
+        assert!(
+            page.count <= 50,
+            "Page count must not exceed MAX_PAGE_LIMIT"
+        );
         // Every item on this page must be USDC
         for bill in page.items.iter() {
             assert_eq!(
@@ -1245,7 +1247,10 @@ fn stress_restore_bill_updates_stats() {
 
     // The restored bill must be retrievable via get_bill
     let bill = client.get_bill(&1u32);
-    assert!(bill.is_some(), "Restored bill must be accessible via get_bill");
+    assert!(
+        bill.is_some(),
+        "Restored bill must be accessible via get_bill"
+    );
 }
 
 /// Benchmark: measure CPU + memory for get_all_bills_for_owner at the owner cap.
@@ -1274,8 +1279,9 @@ fn bench_get_all_bills_for_owner_at_cap() {
         );
     }
 
-    let (cpu, mem, page) =
-        measure(&env, || client.get_all_bills_for_owner(&owner, &0u32, &50u32));
+    let (cpu, mem, page) = measure(&env, || {
+        client.get_all_bills_for_owner(&owner, &0u32, &50u32)
+    });
     assert_eq!(page.count, 50, "First page must return 50 bills");
 
     println!(

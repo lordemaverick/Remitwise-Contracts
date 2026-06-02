@@ -1,57 +1,57 @@
-    use testutils::{set_ledger_time, setup_test_env};
+use testutils::{set_ledger_time, setup_test_env};
 #[cfg(test)]
 mod testsuit {
-        proptest! {
-            #[test]
-            fn prop_overdue_bills_all_due_dates_less_than_now(
-                now in 1_000_000u64..10_000_000u64,
-                n_overdue in 1usize..10,
-                n_future in 0usize..10
-            ) {
-                let env = Env::default();
-                set_ledger_time(&env, now);
-                let contract_id = env.register_contract(None, BillPayments);
-                let client = BillPaymentsClient::new(&env, &contract_id);
-                let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+    proptest! {
+        #[test]
+        fn prop_overdue_bills_all_due_dates_less_than_now(
+            now in 1_000_000u64..10_000_000u64,
+            n_overdue in 1usize..10,
+            n_future in 0usize..10
+        ) {
+            let env = Env::default();
+            set_ledger_time(&env, now);
+            let contract_id = env.register_contract(None, BillPayments);
+            let client = BillPaymentsClient::new(&env, &contract_id);
+            let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+            env.mock_all_auths();
+
+            // Create overdue bills
+            for i in 0..n_overdue {
+                client.create_bill(
+                    &owner,
+                    &String::from_str(&env, &format!("Overdue{}", i)),
+                    &100,
+                    &(now - 1 - i as u64), // due_date < now
+                    &false,
+                    &0, &None, &None, &String::from_str(&env, "XLM"));
                 env.mock_all_auths();
-
-                // Create overdue bills
-                for i in 0..n_overdue {
-                    client.create_bill(
-                        &owner,
-                        &String::from_str(&env, &format!("Overdue{}", i)),
-                        &100,
-                        &(now - 1 - i as u64), // due_date < now
-                        &false,
-                        &0, &None, &None, &String::from_str(&env, "XLM"));
-                    env.mock_all_auths();
-                }
-
-                // Create future bills
-                for i in 0..n_future {
-                    client.create_bill(
-                        &owner,
-                        &String::from_str(&env, &format!("Future{}", i)),
-                        &100,
-                        &(now + 1 + i as u64), // due_date > now
-                        &false,
-                        &0, &None, &None, &String::from_str(&env, "XLM"));
-                    env.mock_all_auths();
-                }
-
-                let overdue = client.get_overdue_bills(&owner, &0, &100);
-                // All overdue bills should have due_date < now
-                for bill in overdue.items.iter() {
-                    assert!(bill.due_date < now, "Bill due_date {} not less than now {}", bill.due_date, now);
-                }
-                // The number of overdue bills should match n_overdue
-                assert_eq!(overdue.items.len(), n_overdue);
             }
+
+            // Create future bills
+            for i in 0..n_future {
+                client.create_bill(
+                    &owner,
+                    &String::from_str(&env, &format!("Future{}", i)),
+                    &100,
+                    &(now + 1 + i as u64), // due_date > now
+                    &false,
+                    &0, &None, &None, &String::from_str(&env, "XLM"));
+                env.mock_all_auths();
+            }
+
+            let overdue = client.get_overdue_bills(&owner, &0, &100);
+            // All overdue bills should have due_date < now
+            for bill in overdue.items.iter() {
+                assert!(bill.due_date < now, "Bill due_date {} not less than now {}", bill.due_date, now);
+            }
+            // The number of overdue bills should match n_overdue
+            assert_eq!(overdue.items.len(), n_overdue);
         }
+    }
     use crate::*;
+    use proptest::prelude::*;
     use soroban_sdk::testutils::{Address as AddressTrait, Ledger, LedgerInfo};
     use soroban_sdk::Env;
-    use proptest::prelude::*;
 
     // Removed local set_ledger_time in favor of testutils::set_ledger_time
 
@@ -65,7 +65,9 @@ mod testsuit {
             &1000,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(bill_id, 1);
@@ -87,7 +89,9 @@ mod testsuit {
             &0,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(result, Err(Ok(Error::InvalidAmount)));
@@ -107,7 +111,9 @@ mod testsuit {
             &500,
             &1000000,
             &true,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(result, Err(Ok(Error::InvalidFrequency)));
@@ -127,7 +133,9 @@ mod testsuit {
             &-100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(result, Err(Ok(Error::InvalidAmount)));
@@ -147,7 +155,9 @@ mod testsuit {
             &500,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         env.mock_all_auths();
@@ -172,7 +182,9 @@ mod testsuit {
             &10000,
             &1000000,
             &true,
-            &30, &None, &String::from_str(&env, "XLM"),
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         env.mock_all_auths();
@@ -203,7 +215,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -212,7 +226,9 @@ mod testsuit {
             &200,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -221,7 +237,9 @@ mod testsuit {
             &300,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.pay_bill(&owner, &1);
@@ -243,7 +261,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -252,7 +272,9 @@ mod testsuit {
             &200,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -261,7 +283,9 @@ mod testsuit {
             &300,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.pay_bill(&owner, &1);
@@ -295,7 +319,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.pay_bill(&owner, &bill_id);
@@ -319,7 +345,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -328,7 +356,9 @@ mod testsuit {
             &200,
             &1500000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.create_bill(
@@ -337,7 +367,9 @@ mod testsuit {
             &300,
             &3000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let overdue = client.get_overdue_bills(&owner, &0, &100);
@@ -357,7 +389,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.cancel_bill(&owner, &bill_id);
@@ -376,7 +410,9 @@ mod testsuit {
             &200,
             &2000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         assert_ne!(bill_id, new_bill_id, "new bill should have different ID");
         assert!(
@@ -407,7 +443,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         client.cancel_bill(&owner, &bill_id);
@@ -438,7 +476,9 @@ mod testsuit {
             &500,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let result = client.try_cancel_bill(&other, &bill_id);
@@ -524,7 +564,9 @@ mod testsuit {
             &999,
             &1000000,
             &true,
-            &30, &None, &String::from_str(&env, "XLM"),
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         env.mock_all_auths();
         // Pay first bill - creates second
@@ -560,7 +602,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -568,7 +612,9 @@ mod testsuit {
             &200,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -576,7 +622,9 @@ mod testsuit {
             &300,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.pay_bill(&owner, &1);
 
@@ -599,7 +647,9 @@ mod testsuit {
             &500,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let result = client.try_pay_bill(&other, &bill_id);
@@ -620,7 +670,9 @@ mod testsuit {
             &1000,
             &1000000,
             &true, // Recurring
-            &30, &None, &String::from_str(&env, "XLM"),
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Cancel the bill
@@ -650,7 +702,9 @@ mod testsuit {
             &500,
             &1000000, // Due in past
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Verify it shows up in overdue
@@ -773,7 +827,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -781,7 +837,9 @@ mod testsuit {
             &200,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let bills = client.get_all_bills_for_owner(&owner, &0, &100);
@@ -807,7 +865,9 @@ mod testsuit {
             &1000,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &alice,
@@ -815,7 +875,9 @@ mod testsuit {
             &200,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &bob,
@@ -823,7 +885,9 @@ mod testsuit {
             &50,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let alice_bills = client.get_all_bills_for_owner(&alice, &0, &100);
@@ -856,7 +920,9 @@ mod testsuit {
             &500,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Bob never created a bill
@@ -879,7 +945,9 @@ mod testsuit {
             &300,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.pay_bill(&owner, &bill_id);
 
@@ -903,7 +971,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -911,7 +981,9 @@ mod testsuit {
             &200,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.cancel_bill(&owner, &bill_id);
 
@@ -938,7 +1010,9 @@ mod testsuit {
             &100,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Alice tries to call the admin-only endpoint
@@ -1207,7 +1281,9 @@ mod testsuit {
             &1000,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let events = env.events().all();
@@ -1220,7 +1296,9 @@ mod testsuit {
             &500,
             &5000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         let expected_topics = vec![
             &env,
@@ -1257,7 +1335,9 @@ mod testsuit {
             &2000,
             &1_100_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Phase 2: Advance to seq 510,000 (TTL = 8,500 < 17,280)
@@ -1279,7 +1359,9 @@ mod testsuit {
             &100,
             &1_200_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Phase 3: Advance to seq 1,020,000 (TTL = 8,400 < 17,280)
@@ -1341,7 +1423,9 @@ mod testsuit {
             &1000,
             &1000000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.pay_bill(&owner, &1);
 
@@ -1383,7 +1467,9 @@ mod testsuit {
             &300,
             &600_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         let id2 = client.create_bill(
             &owner,
@@ -1391,7 +1477,9 @@ mod testsuit {
             &200,
             &600_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         let expected_topics = vec![
             &env,
@@ -1429,7 +1517,9 @@ mod testsuit {
             &100,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &alice,
@@ -1437,7 +1527,9 @@ mod testsuit {
             &200,
             &1_500_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Bob has 1 overdue bill
@@ -1447,7 +1539,9 @@ mod testsuit {
             &300,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Alice has 1 future bill (not overdue)
@@ -1457,7 +1551,9 @@ mod testsuit {
             &400,
             &3_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let alice_overdue = client.get_overdue_bills(&alice, &0, &100);
@@ -1492,7 +1588,11 @@ mod testsuit {
             &500,
             &1000000,
             &false,
-            &0, &None, &None, &String::from_str(&env, "XLM"));
+            &0,
+            &None,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
     }
 
     #[test]
@@ -1528,7 +1628,11 @@ mod testsuit {
             &500,
             &1000000,
             &false,
-            &0, &None, &None, &String::from_str(&env, "XLM"));
+            &0,
+            &None,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
 
         // other tries to pay the bill for owner
         client.pay_bill(&owner, &bill_id);
@@ -1567,7 +1671,11 @@ mod testsuit {
             &500,
             &1000000,
             &false,
-            &0, &None, &None, &String::from_str(&env, "XLM"));
+            &0,
+            &None,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
 
         // other tries to cancel the bill for owner
         client.cancel_bill(&owner, &bill_id);
@@ -1733,7 +1841,6 @@ mod testsuit {
     //     assert_eq!(next_bill.due_date, expected_due_date);
     // }
 
-    
     #[test]
     fn test_recurring_date_math_multiple_pay_cycles_3rd_bill() {
         // Test: Multiple pay cycles - verify 3rd bill's due date advances correctly
@@ -1882,7 +1989,9 @@ mod testsuit {
             &amount,
             &1_000_000,
             &true,
-            &30, &None, &String::from_str(&env, "XLM"),
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -1919,7 +2028,9 @@ mod testsuit {
             &1000,
             &1_000_000,
             &true,
-            &30, &None, &String::from_str(&env, "XLM"),
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -1955,7 +2066,9 @@ mod testsuit {
             &100,
             &1_000_000,
             &true,
-            &30, &None, &String::from_str(&env, "XLM"),
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Pay first bill
@@ -2037,7 +2150,11 @@ mod testsuit {
             &200,
             &due_date,
             &false,
-            &0, &None, &None, &String::from_str(&env, "XLM"));
+            &0,
+            &None,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
 
         let page = client.get_overdue_bills(&owner, &0, &100);
         assert_eq!(
@@ -2064,7 +2181,11 @@ mod testsuit {
             &150,
             &due_date,
             &false,
-            &0, &None, &None, &String::from_str(&env, "XLM"));
+            &0,
+            &None,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
 
         // Not yet overdue at due_date
         let page = client.get_overdue_bills(&owner, &0, &100);
@@ -2167,7 +2288,11 @@ mod testsuit {
             &5000,
             &due_date,
             &false,
-            &0, &None, &None, &String::from_str(&env, "XLM"));
+            &0,
+            &None,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
 
         // Still not overdue at due_date
         let page = client.get_overdue_bills(&owner, &0, &100);
@@ -2228,7 +2353,9 @@ mod testsuit {
             &400,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         let id2 = client.create_bill(
             &owner,
@@ -2236,7 +2363,9 @@ mod testsuit {
             &600,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         client.pay_bill(&owner, &id1);
@@ -2267,7 +2396,9 @@ mod testsuit {
             &1000,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let total = client.get_total_unpaid(&owner);
@@ -2295,7 +2426,9 @@ mod testsuit {
             &100,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -2303,7 +2436,9 @@ mod testsuit {
             &200,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -2311,7 +2446,9 @@ mod testsuit {
             &300,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let total = client.get_total_unpaid(&owner);
@@ -2340,7 +2477,9 @@ mod testsuit {
             &100,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         let id_b = client.create_bill(
             &owner,
@@ -2348,7 +2487,9 @@ mod testsuit {
             &200,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -2356,7 +2497,9 @@ mod testsuit {
             &300,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Confirm starting total
@@ -2390,7 +2533,9 @@ mod testsuit {
             &100,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         let id2 = client.create_bill(
             &owner,
@@ -2398,7 +2543,9 @@ mod testsuit {
             &200,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         let id3 = client.create_bill(
             &owner,
@@ -2406,7 +2553,9 @@ mod testsuit {
             &300,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(client.get_total_unpaid(&owner), 600);
@@ -2454,7 +2603,9 @@ mod testsuit {
             &300,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner_a,
@@ -2462,7 +2613,9 @@ mod testsuit {
             &200,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // owner_b: one bill of 9999
@@ -2472,7 +2625,9 @@ mod testsuit {
             &9999,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let total_a = client.get_total_unpaid(&owner_a);
@@ -2507,7 +2662,9 @@ mod testsuit {
             &750,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         let id_b = client.create_bill(
             &owner_b,
@@ -2515,7 +2672,9 @@ mod testsuit {
             &1234,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         // Pay owner_b's bill
@@ -2552,7 +2711,9 @@ mod testsuit {
             &500,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         let id_cancel = client.create_bill(
             &owner,
@@ -2560,7 +2721,9 @@ mod testsuit {
             &9000,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         assert_eq!(client.get_total_unpaid(&owner), 9500);
@@ -2594,7 +2757,9 @@ mod testsuit {
             &1,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let total = client.get_total_unpaid(&owner);
@@ -2626,7 +2791,9 @@ mod testsuit {
             &big,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
         client.create_bill(
             &owner,
@@ -2634,7 +2801,9 @@ mod testsuit {
             &big,
             &1_000_000,
             &false,
-            &0, &None, &String::from_str(&env, "XLM"),
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
         );
 
         let total = client.get_total_unpaid(&owner);
@@ -2695,9 +2864,36 @@ mod testsuit {
 
         // 1. Create 3 bills
         let name = String::from_str(&env, "B");
-        let id1 = client.create_bill(&owner, &name, &100, &1000000, &false, &0, &None, &String::from_str(&env, "XLM"));
-        let id2 = client.create_bill(&owner, &name, &200, &1000000, &false, &0, &None, &String::from_str(&env, "XLM"));
-        let id3 = client.create_bill(&owner, &name, &300, &1000000, &false, &0, &None, &String::from_str(&env, "XLM"));
+        let id1 = client.create_bill(
+            &owner,
+            &name,
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+        let id2 = client.create_bill(
+            &owner,
+            &name,
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+        let id3 = client.create_bill(
+            &owner,
+            &name,
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
 
         // 2. Pre-pay ID1 so it is "already paid" when batch starts
         client.pay_bill(&owner, &id1);
@@ -2710,7 +2906,7 @@ mod testsuit {
         ids.push_back(id3);
 
         let success_count = client.batch_pay_bills(&owner, &ids);
-        
+
         // Expected: only ID2 and ID3 were paid. ID1 was skipped (already paid), 999 was skipped (not found).
         assert_eq!(success_count, 2);
 
@@ -2730,9 +2926,36 @@ mod testsuit {
         env.mock_all_auths();
 
         let name = String::from_str(&env, "Test");
-        let a1 = client.create_bill(&alice, &name, &100, &1000000, &false, &0, &None, &String::from_str(&env, "XLM"));
-        let b1 = client.create_bill(&bob, &name, &200, &1000000, &false, &0, &None, &String::from_str(&env, "XLM"));
-        let a2 = client.create_bill(&alice, &name, &300, &1000000, &false, &0, &None, &String::from_str(&env, "XLM"));
+        let a1 = client.create_bill(
+            &alice,
+            &name,
+            &100,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+        let b1 = client.create_bill(
+            &bob,
+            &name,
+            &200,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+        let a2 = client.create_bill(
+            &alice,
+            &name,
+            &300,
+            &1000000,
+            &false,
+            &0,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
 
         let mut ids = Vec::new(&env);
         ids.push_back(a1);
@@ -2741,7 +2964,7 @@ mod testsuit {
 
         // Alice tries to pay the batch
         let success_count = client.batch_pay_bills(&alice, &ids);
-        
+
         // Expected: only A1 and A2 paid. B1 skipped.
         assert_eq!(success_count, 2);
         assert!(client.get_bill(&a1).unwrap().paid);
@@ -2758,8 +2981,17 @@ mod testsuit {
         env.mock_all_auths();
 
         let name = String::from_str(&env, "R");
-        let id1 = client.create_bill(&owner, &name, &100, &1000000, &true, &30, &None, &String::from_str(&env, "XLM"));
-        
+        let id1 = client.create_bill(
+            &owner,
+            &name,
+            &100,
+            &1000000,
+            &true,
+            &30,
+            &None,
+            &String::from_str(&env, "XLM"),
+        );
+
         let mut ids = Vec::new(&env);
         ids.push_back(id1);
 

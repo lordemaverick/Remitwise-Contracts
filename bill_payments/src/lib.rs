@@ -12,6 +12,17 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
+fn is_valid_currency_chars(s: &[u8]) -> bool {
+    !s.is_empty() && s.iter().all(|&b| b.is_ascii_alphabetic())
+}
+
+const MAX_FREQUENCY_DAYS: u32 = 36_500; // 100 years
+const SECONDS_PER_DAY: u64 = 86_400;
+const MAX_CURRENCY_LEN: u32 = 10;
+pub const MAX_BILLS_PER_OWNER: u32 = 1_000;
+const MIN_EXTERNAL_REF_LEN: u32 = 1;
+const MAX_EXTERNAL_REF_LEN: u32 = 64;
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Bill {
@@ -118,6 +129,8 @@ pub enum BillPaymentsError {
     InvalidTagContent = 19,
 }
 
+pub type Error = BillPaymentsError;
+
 #[contracttype]
 #[derive(Clone)]
 pub struct ArchivedBill {
@@ -130,7 +143,6 @@ pub struct ArchivedBill {
     pub archived_at: u64,
     pub tags: Vec<String>,
     pub currency: String,
-    pub external_ref: Option<String>,
 }
 
 /// Paginated result for archived bill queries
@@ -419,15 +431,87 @@ impl BillPayments {
     /// WARNING: This does not validate currency codes. Use validate_and_normalize_currency
     /// for new code to ensure proper currency validation.
     fn normalize_currency(env: &Env, currency: &String) -> String {
-        if currency.len() == 0 {
-            String::from_str(env, "XLM")
-        } else {
-            currency.clone()
+        // For backward compatibility, try validation first, fall back on error
+        match Self::validate_and_normalize_currency(env, currency) {
+            Ok(normalized) => normalized,
+            Err(_) => String::from_str(env, "XLM"),
         }
     }
 
-    fn validate_currency(_currency: &String) -> Result<(), Error> {
-        // Validation skipped for now due to String method limitations
+    // -----------------------------------------------------------------------
+    // external_ref validation & per-owner uniqueness index
+    // -----------------------------------------------------------------------
+
+    /// Validate an `external_ref` string.
+    ///
+    /// Allowed characters: ASCII alphanumeric, hyphens, underscores, dots, colons.
+    /// Length must be within `[MIN_EXTERNAL_REF_LEN, MAX_EXTERNAL_REF_LEN]`.
+    fn validate_external_ref(_env: &Env, ext_ref: &String) -> Result<String, BillPaymentsError> {
+        let len = ext_ref.len();
+        if len < MIN_EXTERNAL_REF_LEN || len > MAX_EXTERNAL_REF_LEN {
+            return Err(BillPaymentsError::InvalidExternalRef);
+        }
+
+        let mut buf = [0u8; 64];
+        let copy_len = (len as usize).min(buf.len());
+        ext_ref.copy_into_slice(&mut buf[..copy_len]);
+        let s = &buf[..copy_len];
+
+        for &b in s {
+            if !(b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b':') {
+                return Err(BillPaymentsError::InvalidExternalRef);
+            }
+        }
+
+        // Return as-is (case-sensitive for reconciliation fidelity)
+        Ok(ext_ref.clone())
+    }
+
+    /// Optionally validate an external_ref. `None` passes through.
+    fn validate_optional_external_ref(
+        env: &Env,
+        ext_ref: &Option<String>,
+    ) -> Result<Option<String>, BillPaymentsError> {
+        match ext_ref {
+            Option::None => Ok(None),
+            Option::Some(r) => Ok(Some(Self::validate_external_ref(env, r)?)),
+        }
+    }
+
+    /// Load the owner-scoped external_ref index: `Map<Address, Map<String, u32>>`
+    fn get_ext_ref_index(env: &Env) -> Map<Address, Map<String, u32>> {
+        env.storage()
+            .instance()
+            .get(&STORAGE_EXT_REF_IDX)
+            .unwrap_or_else(|| Map::new(env))
+    }
+
+    fn save_ext_ref_index(env: &Env, idx: &Map<Address, Map<String, u32>>) {
+        env.storage().instance().set(&STORAGE_EXT_REF_IDX, idx);
+    }
+
+    /// Claim `ext_ref` for `owner` → `bill_id`. Fails if already claimed by another bill.
+    fn claim_external_ref(
+        env: &Env,
+        owner: &Address,
+        ext_ref: &String,
+        bill_id: u32,
+    ) -> Result<(), BillPaymentsError> {
+        let mut idx = Self::get_ext_ref_index(env);
+        let mut owner_map: Map<String, u32> =
+            idx.get(owner.clone()).unwrap_or_else(|| Map::new(env));
+
+        if let Some(existing_id) = owner_map.get(ext_ref.clone()) {
+            if existing_id != bill_id {
+                return Err(BillPaymentsError::DuplicateExternalRef);
+            }
+            // Same bill re-claiming its own ref — no-op
+            return Ok(());
+        }
+
+        owner_map.set(ext_ref.clone(), bill_id);
+        idx.set(owner.clone(), owner_map);
+        Self::save_ext_ref_index(env, &idx);
         Ok(())
     }
 
@@ -1670,7 +1754,6 @@ impl BillPayments {
                         archived_at: current_time,
                         tags: bill.tags.clone(),
                         currency: bill.currency.clone(),
-                        external_ref: bill.external_ref.clone(),
                     };
                     archived.set(id, archived_bill);
 
@@ -1759,7 +1842,6 @@ impl BillPayments {
             schedule_id: None,
             tags: archived_bill.tags.clone(),
             currency: archived_bill.currency.clone(),
-            external_ref: archived_bill.external_ref.clone(),
         };
 
         bills.set(bill_id, restored_bill);
@@ -1912,7 +1994,6 @@ impl BillPayments {
                     schedule_id: bill.schedule_id,
                     tags: bill.tags.clone(),
                     currency: bill.currency.clone(),
-                    external_ref: bill.external_ref.clone(),
                 };
                 bills.set(next_id, next_bill);
                 // Update owner index for the newly spawned recurring bill

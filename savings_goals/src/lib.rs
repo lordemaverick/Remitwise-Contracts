@@ -170,19 +170,6 @@ pub struct SavingsSchedule {
     pub missed_count: u32,
 }
 
-#[contracterror]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum SavingsGoalsError {
-    InvalidAmount = 1,
-    GoalNotFound = 2,
-    Unauthorized = 3,
-    GoalLocked = 4,
-    InsufficientBalance = 5,
-    Overflow = 6,
-    InvalidGoalName = 7,
-}
-
 #[contracttype]
 #[derive(Clone)]
 pub enum SavingsEvent {
@@ -263,7 +250,12 @@ pub enum SavingsGoalError {
     TargetAmountMustBePositive = 5,
     UnsupportedVersion = 6,
     ChecksumMismatch = 7,
+    InvalidAmount = 8,
+    Overflow = 9,
+    InvalidTagContent = 10,
     InvalidGoalName = 11,
+    GoalCapReached = 12,
+    BatchTooLarge = 14,
 }
 #[contract]
 pub struct SavingsGoalContract;
@@ -315,18 +307,21 @@ impl SavingsGoalContract {
         }
     }
 
-    fn validate_goal_name(name: &String) -> Result<(), SavingsGoalsError> {
+    fn validate_goal_name(name: &String) -> Result<(), SavingsGoalError> {
         let name_len = name.len();
         if name_len == 0 || name_len > 32 {
-            return Err(SavingsGoalsError::InvalidGoalName);
+            return Err(SavingsGoalError::InvalidGoalName);
         }
-        
+
         let mut string_bytes = alloc::vec::Vec::new();
-        name.to_string().as_bytes().iter().for_each(|&b| string_bytes.push(b));
+        name.to_string()
+            .as_bytes()
+            .iter()
+            .for_each(|&b| string_bytes.push(b));
         for byte in string_bytes {
             // Allow printable ASCII characters (32 to 126 inclusive)
             if byte < 32 || byte > 126 {
-                return Err(SavingsGoalsError::InvalidGoalName);
+                return Err(SavingsGoalError::InvalidGoalName);
             }
         }
         Ok(())

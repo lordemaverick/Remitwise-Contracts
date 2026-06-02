@@ -267,13 +267,27 @@ impl Orchestrator {
 
         Self::extend_instance_ttl(&env);
 
-        env.storage().instance().set(&symbol_short!("OWNER"), &caller);
-        env.storage().instance().set(&symbol_short!("FW_ADDR"), &family_wallet);
-        env.storage().instance().set(&symbol_short!("RS_ADDR"), &remittance_split);
-        env.storage().instance().set(&symbol_short!("SG_ADDR"), &savings_goals);
-        env.storage().instance().set(&symbol_short!("BP_ADDR"), &bill_payments);
-        env.storage().instance().set(&symbol_short!("INS_ADDR"), &insurance);
-        env.storage().instance().set(&symbol_short!("EXEC_LOCK"), &false);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("OWNER"), &caller);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("FW_ADDR"), &family_wallet);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("RS_ADDR"), &remittance_split);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("SG_ADDR"), &savings_goals);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("BP_ADDR"), &bill_payments);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("INS_ADDR"), &insurance);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("EXEC_LOCK"), &false);
         env.storage()
             .instance()
             .set(&symbol_short!("NONCES"), &Map::<Address, u64>::new(&env));
@@ -285,7 +299,9 @@ impl Orchestrator {
             last_execution_time: 0,
             evicted_entries: 0,
         };
-        env.storage().instance().set(&symbol_short!("STATS"), &stats);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("STATS"), &stats);
 
         /// Emit orchestrator initialization event
         /// Topic: ("Remitwise", EventCategory::System, EventPriority::High, "init_ok")
@@ -621,6 +637,22 @@ impl Orchestrator {
                 }
             }
             log = new_log;
+            // Track eviction in stats
+            let mut stats: ExecutionStats = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("STATS"))
+                .unwrap_or(ExecutionStats {
+                    total_executions: 0,
+                    successful_executions: 0,
+                    failed_executions: 0,
+                    last_execution_time: 0,
+                    evicted_entries: 0,
+                });
+            stats.evicted_entries = stats.evicted_entries.saturating_add(1);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("STATS"), &stats);
         }
         log.push_back(AuditEntry {
             operation,

@@ -1098,7 +1098,11 @@ impl ReportingContract {
     /// - All cross-contract calls are made to configured addresses
     /// - Arithmetic operations are overflow-safe
     /// - No external dependencies on ledger state beyond cross-contract data
-    pub fn calculate_health_score(env: Env, user: Address, _total_remittance: i128) -> HealthScore {
+    pub fn calculate_health_score(
+        env: Env,
+        user: Address,
+        _total_remittance: i128,
+    ) -> Result<HealthScore, ReportingError> {
         let addresses: ContractAddresses = env
             .storage()
             .instance()
@@ -1243,7 +1247,7 @@ impl ReportingContract {
         Self::validate_period(period_start, period_end)?;
         user.require_auth();
         let health_score =
-            Self::calculate_health_score_internal(&env, user.clone(), total_remittance);
+            Self::calculate_health_score(env.clone(), user.clone(), total_remittance);
         let remittance_summary = Self::get_remittance_summary_internal(
             &env,
             total_remittance,

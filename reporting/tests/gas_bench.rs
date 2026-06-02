@@ -661,8 +661,13 @@ fn store_n_reports(
     for i in 0u32..n {
         let user = Address::generate(env);
         let period_key = PERIOD_START + (i as u64) * 3_600;
-        let report =
-            client.get_financial_health_report(&user, &user, &100_000i128, &PERIOD_START, &PERIOD_END);
+        let report = client.get_financial_health_report(
+            &user,
+            &user,
+            &100_000i128,
+            &PERIOD_START,
+            &PERIOD_END,
+        );
         client.store_report(&user, &report, &period_key);
     }
 

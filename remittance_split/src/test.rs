@@ -57,7 +57,6 @@ fn sample_accounts(env: &Env) -> AccountGroup {
     }
 }
 
-
 #[test]
 fn test_distribution_completed_event() {
     let env = Env::default();
@@ -204,14 +203,14 @@ fn test_request_hash_deterministic() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     let usdc_contract = Address::generate(&env);
     let from = Address::generate(&env);
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
     let insurance = Address::generate(&env);
-    
+
     let request = DistributeUsdcRequest {
         usdc_contract: usdc_contract.clone(),
         from: from.clone(),
@@ -225,11 +224,11 @@ fn test_request_hash_deterministic() {
         total_amount: 1000i128,
         deadline: 2000u64,
     };
-    
+
     // Hash the same request twice
     let hash1 = client.get_request_hash(&request);
     let hash2 = client.get_request_hash(&request);
-    
+
     // Both hashes should be identical (deterministic)
     assert_eq!(hash1, hash2);
     // SHA-256 produces 32 bytes
@@ -246,10 +245,10 @@ fn test_ttl_extensions() {
     // 1. Check Instance TTL extension (CONFIG)
     // Initial sequence is 0. Threshold is INSTANCE_LIFETIME_THRESHOLD.
     let threshold = INSTANCE_LIFETIME_THRESHOLD;
-    
+
     // Advance to threshold - 1
     env.ledger().set_sequence(threshold - 1);
-    
+
     // Access CONFIG
     let config = client.get_config();
     assert!(config.is_some(), "Config should exist before expiration");
@@ -275,7 +274,10 @@ fn test_ttl_extensions() {
 
     // Access Schedule
     let schedule = client.get_remittance_schedule(&schedule_id);
-    assert!(schedule.is_some(), "Schedule should exist before expiration");
+    assert!(
+        schedule.is_some(),
+        "Schedule should exist before expiration"
+    );
 
     // Advance beyond original threshold
     env.ledger().set_sequence(current_seq + p_threshold + 1);
@@ -288,7 +290,7 @@ fn test_ttl_extensions() {
         env.ledger().set_sequence(seq + p_threshold - 1);
         assert!(client.get_remittance_schedule(&schedule_id).is_some());
     }
-    
+
     // Final check
     assert!(client.get_remittance_schedule(&schedule_id).is_some());
 }
@@ -299,7 +301,7 @@ fn test_request_hash_changes_with_parameters() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     let usdc_contract = Address::generate(&env);
     let from = Address::generate(&env);
     let spending = Address::generate(&env);
@@ -307,7 +309,7 @@ fn test_request_hash_changes_with_parameters() {
     let bills = Address::generate(&env);
     let insurance = Address::generate(&env);
     let other = Address::generate(&env);
-    
+
     let base_request = DistributeUsdcRequest {
         usdc_contract: usdc_contract.clone(),
         from: from.clone(),
@@ -321,44 +323,56 @@ fn test_request_hash_changes_with_parameters() {
         total_amount: 1000i128,
         deadline: 2000u64,
     };
-    
+
     let base_hash = client.get_request_hash(&base_request);
-    
+
     // Test 1: Changing usdc_contract changes hash
     let mut req = base_request.clone();
     req.usdc_contract = other.clone();
     let hash = client.get_request_hash(&req);
-    assert!(hash.ne(&base_hash), "Hash should change when usdc_contract changes");
-    
+    assert!(
+        hash.ne(&base_hash),
+        "Hash should change when usdc_contract changes"
+    );
+
     // Test 2: Changing from address changes hash
     let mut req = base_request.clone();
     req.from = other.clone();
     let hash = client.get_request_hash(&req);
     assert!(hash.ne(&base_hash), "Hash should change when from changes");
-    
+
     // Test 3: Changing nonce changes hash
     let mut req = base_request.clone();
     req.nonce = 1;
     let hash = client.get_request_hash(&req);
     assert!(hash.ne(&base_hash), "Hash should change when nonce changes");
-    
+
     // Test 4: Changing total_amount changes hash
     let mut req = base_request.clone();
     req.total_amount = 2000;
     let hash = client.get_request_hash(&req);
-    assert!(hash.ne(&base_hash), "Hash should change when total_amount changes");
-    
+    assert!(
+        hash.ne(&base_hash),
+        "Hash should change when total_amount changes"
+    );
+
     // Test 5: Changing deadline changes hash
     let mut req = base_request.clone();
     req.deadline = 3000;
     let hash = client.get_request_hash(&req);
-    assert!(hash.ne(&base_hash), "Hash should change when deadline changes");
-    
+    assert!(
+        hash.ne(&base_hash),
+        "Hash should change when deadline changes"
+    );
+
     // Test 6: Changing spending account changes hash
     let mut req = base_request.clone();
     req.accounts.spending = other.clone();
     let hash = client.get_request_hash(&req);
-    assert!(hash.ne(&base_hash), "Hash should change when spending account changes");
+    assert!(
+        hash.ne(&base_hash),
+        "Hash should change when spending account changes"
+    );
 }
 
 /// Test deadline validation: deadline must not be in the past
@@ -367,20 +381,20 @@ fn test_distribute_usdc_deadline_expired() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     env.mock_all_auths();
     set_time(&env, 1000);
-    
+
     let owner = Address::generate(&env);
     let usdc_contract = Address::generate(&env);
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
     let insurance = Address::generate(&env);
-    
+
     // Initialize contract
     client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
-    
+
     // Create request with deadline in the past (500 < 1000)
     let request = DistributeUsdcRequest {
         usdc_contract: usdc_contract.clone(),
@@ -393,9 +407,9 @@ fn test_distribute_usdc_deadline_expired() {
             insurance: insurance.clone(),
         },
         total_amount: 1000i128,
-        deadline: 500u64,  // Past deadline
+        deadline: 500u64, // Past deadline
     };
-    
+
     let hash = client.get_request_hash(&request);
     let result = client.try_distribute_usdc_hashed(&request, &hash);
     assert_eq!(result, Err(Ok(RemittanceSplitError::DeadlineExpired)));
@@ -407,20 +421,20 @@ fn test_distribute_usdc_deadline_too_far() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     env.mock_all_auths();
     set_time(&env, 1000);
-    
+
     let owner = Address::generate(&env);
     let usdc_contract = Address::generate(&env);
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
     let insurance = Address::generate(&env);
-    
+
     // Initialize contract
     client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
-    
+
     // Create request with deadline > MAX_DEADLINE_WINDOW_SECS from now
     let request = DistributeUsdcRequest {
         usdc_contract: usdc_contract.clone(),
@@ -433,9 +447,9 @@ fn test_distribute_usdc_deadline_too_far() {
             insurance: insurance.clone(),
         },
         total_amount: 1000i128,
-        deadline: 1000 + 3600 + 1,  // 1 second more than allowed window
+        deadline: 1000 + 3600 + 1, // 1 second more than allowed window
     };
-    
+
     let hash = client.get_request_hash(&request);
     let result = client.try_distribute_usdc_hashed(&request, &hash);
     assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidDeadline)));
@@ -447,20 +461,20 @@ fn test_distribute_usdc_deadline_zero() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     env.mock_all_auths();
     set_time(&env, 1000);
-    
+
     let owner = Address::generate(&env);
     let usdc_contract = Address::generate(&env);
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
     let insurance = Address::generate(&env);
-    
+
     // Initialize contract
     client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
-    
+
     // Create request with deadline = 0
     let request = DistributeUsdcRequest {
         usdc_contract: usdc_contract.clone(),
@@ -473,9 +487,9 @@ fn test_distribute_usdc_deadline_zero() {
             insurance: insurance.clone(),
         },
         total_amount: 1000i128,
-        deadline: 0,  // Invalid deadline
+        deadline: 0, // Invalid deadline
     };
-    
+
     let hash = client.get_request_hash(&request);
     let result = client.try_distribute_usdc_hashed(&request, &hash);
     assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidDeadline)));
@@ -487,20 +501,20 @@ fn test_distribute_usdc_hash_mismatch() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     env.mock_all_auths();
     set_time(&env, 1000);
-    
+
     let owner = Address::generate(&env);
     let usdc_contract = Address::generate(&env);
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
     let insurance = Address::generate(&env);
-    
+
     // Initialize contract
     client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
-    
+
     // Create valid request
     let request = DistributeUsdcRequest {
         usdc_contract: usdc_contract.clone(),
@@ -515,11 +529,11 @@ fn test_distribute_usdc_hash_mismatch() {
         total_amount: 1000i128,
         deadline: 2000u64,
     };
-    
+
     // Use a zeroed 32-byte hash as the "wrong" hash
     let _ = client.get_request_hash(&request);
     let wrong_hash = soroban_sdk::Bytes::from_slice(&env, &[0u8; 32]);
-    
+
     let result = client.try_distribute_usdc_hashed(&request, &wrong_hash);
     assert_eq!(result, Err(Ok(RemittanceSplitError::RequestHashMismatch)));
 }
@@ -530,20 +544,20 @@ fn test_distribute_usdc_deadline_at_boundary() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     env.mock_all_auths();
     set_time(&env, 1000);
-    
+
     let owner = Address::generate(&env);
     let usdc_contract = Address::generate(&env);
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
     let insurance = Address::generate(&env);
-    
+
     // Initialize contract
     client.initialize_split(&owner, &0, &usdc_contract, &50, &30, &15, &5);
-    
+
     // Create request with deadline exactly at MAX_DEADLINE_WINDOW_SECS boundary
     let request = DistributeUsdcRequest {
         usdc_contract: usdc_contract.clone(),
@@ -556,15 +570,15 @@ fn test_distribute_usdc_deadline_at_boundary() {
             insurance: insurance.clone(),
         },
         total_amount: 1000i128,
-        deadline: 1000 + 3600,  // Exactly at 1 hour boundary
+        deadline: 1000 + 3600, // Exactly at 1 hour boundary
     };
-    
+
     let hash = client.get_request_hash(&request);
-    
+
     // This should pass deadline validation
     // (It will fail for other reasons like missing USDC balance, but not deadline)
     let result = client.try_distribute_usdc_hashed(&request, &hash);
-    
+
     // Should fail due to other reasons (e.g., balance), not deadline validation
     // We can't assert equality here since we didn't register USDC token,
     // but we can check it's not a DeadlineExpired or InvalidDeadline error
@@ -585,14 +599,14 @@ fn test_request_hash_cross_call_consistency() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
-    
+
     let usdc_contract = Address::generate(&env);
     let from = Address::generate(&env);
     let spending = Address::generate(&env);
     let savings = Address::generate(&env);
     let bills = Address::generate(&env);
     let insurance = Address::generate(&env);
-    
+
     let request = DistributeUsdcRequest {
         usdc_contract: usdc_contract.clone(),
         from: from.clone(),
@@ -606,7 +620,7 @@ fn test_request_hash_cross_call_consistency() {
         total_amount: 12345i128,
         deadline: 9999u64,
     };
-    
+
     // Call get_request_hash multiple times and verify consistency
     let h0 = client.get_request_hash(&request);
     let h1 = client.get_request_hash(&request);
@@ -830,7 +844,6 @@ fn test_request_hash_mismatch_nonce_reuse_new_deadline() {
         "Same nonce with new deadline must be rejected"
     );
 }
-
 
 // ============================================================================
 // Execute Due Remittance Schedules Tests

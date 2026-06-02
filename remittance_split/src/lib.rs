@@ -270,7 +270,6 @@ pub struct RemittanceSchedulePage {
     pub count: u32,
 }
 
-
 /// Split allocation output item for UI/analytics consumers.
 #[contracttype]
 #[derive(Clone)]
@@ -2152,6 +2151,7 @@ impl RemittanceSplit {
         schedule.interval = interval;
         schedule.recurring = interval > 0;
 
+        let sch_key = DataKey::Schedule(schedule_id);
         env.storage().persistent().set(&sch_key, &schedule);
         Self::extend_persistent_ttl(&env, &sch_key);
 
@@ -2199,6 +2199,7 @@ impl RemittanceSplit {
 
         schedule.active = false;
 
+        let sch_key = DataKey::Schedule(schedule_id);
         env.storage().persistent().set(&sch_key, &schedule);
         Self::extend_persistent_ttl(&env, &sch_key);
 

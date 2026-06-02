@@ -36,6 +36,15 @@ const DEFAULT_AUDIT_PAGE_LIMIT: u32 = 20;
 const MAX_PENDING_PAGE_LIMIT: u32 = 100;
 const DEFAULT_PENDING_PAGE_LIMIT: u32 = 20;
 
+/// Hard cap on the number of entries retained in `ARCH_TX`.
+/// When the archive reaches this limit the oldest entry (lowest `tx_id`) is
+/// evicted before the new one is inserted, keeping instance-storage rent bounded.
+const MAX_ARCHIVE_ENTRIES: u32 = 500;
+/// Default page size for `get_archived_transactions` when `limit == 0`.
+const DEFAULT_ARCHIVE_PAGE_LIMIT: u32 = 20;
+/// Maximum page size for `get_archived_transactions`.
+const MAX_ARCHIVE_PAGE_LIMIT: u32 = 100;
+
 #[contracttype]
 #[derive(Clone)]
 pub struct AccessAuditEntry {
@@ -778,7 +787,6 @@ impl FamilyWallet {
         }
         Self::require_role_at_least(&env, &signer, FamilyRole::Member);
 
-
         Self::extend_instance_ttl(&env);
 
         let mut pending_txs: Map<u64, PendingTransaction> = env
@@ -1334,9 +1342,16 @@ impl FamilyWallet {
     ///
     /// # Semantics
     /// - `before_timestamp` is a **retention cutoff** (ledger seconds): a row is archived iff
-    ///   `executed_at < before_timestamp`.
+    ///   `executed_at < before_timestamp` (strictly less-than — entries executed *at* the cutoff
+    ///   are **not** archived, preserving the most recent boundary entry in `EXEC_TXS`).
     /// - The cutoff must satisfy `before_timestamp <= ledger timestamp`. A future cutoff would
-    ///   treat recent executions as “old” relative to an incorrect clock and could archive too much.
+    ///   treat recent executions as "old" relative to an incorrect clock and could archive too much.
+    ///
+    /// # Bounded growth invariant
+    /// `ARCH_TX` is capped at `MAX_ARCHIVE_ENTRIES`. Before inserting each new entry, if the
+    /// archive is already at capacity the entry with the **lowest `tx_id`** (oldest) is evicted.
+    /// This keeps instance-storage rent bounded regardless of how many transactions are executed
+    /// over the contract's lifetime.
     ///
     /// # Authorization
     /// Owner or Admin only (`caller.require_auth()`).
@@ -1344,6 +1359,9 @@ impl FamilyWallet {
     /// # Data integrity
     /// Archived rows copy **proposer**, **tx_type**, and **executed_at** from `ExecutedTxMeta`.
     /// If `meta.tx_id != map_key`, the contract panics to avoid corrupting the archive.
+    ///
+    /// # Returns
+    /// The number of transactions moved from `EXEC_TXS` to `ARCH_TX` in this call.
     pub fn archive_old_transactions(env: Env, caller: Address, before_timestamp: u64) -> u32 {
         caller.require_auth();
         Self::require_not_paused(&env);
@@ -1375,11 +1393,67 @@ impl FamilyWallet {
         let mut archived_count = 0u32;
         let mut to_remove: Vec<u64> = Vec::new(&env);
 
+        // Pre-compute archive length and oldest tx_id once, before the main loop.
+        // This avoids O(n²) nested iteration which exhausts the Soroban WASM budget.
+        let mut arch_len = 0u32;
+        let mut oldest_arch_id: Option<u64> = None;
+        for (aid, _) in archived.iter() {
+            arch_len += 1;
+            oldest_arch_id = Some(match oldest_arch_id {
+                None => aid,
+                Some(prev) => {
+                    if aid < prev {
+                        aid
+                    } else {
+                        prev
+                    }
+                }
+            });
+        }
+
         for (tx_id, meta) in executed_txs.iter() {
             if meta.tx_id != tx_id {
                 panic!("Inconsistent executed transaction metadata");
             }
+            // Strictly less-than: entries executed AT before_timestamp are retained.
             if meta.executed_at < before_timestamp {
+                // Enforce the archive size cap: evict the oldest entry (lowest tx_id)
+                // before inserting so ARCH_TX never exceeds MAX_ARCHIVE_ENTRIES.
+                if arch_len >= MAX_ARCHIVE_ENTRIES {
+                    if let Some(oid) = oldest_arch_id {
+                        archived.remove(oid);
+                        // After eviction, find the new oldest from the remaining entries.
+                        let mut new_oldest: Option<u64> = None;
+                        for (aid, _) in archived.iter() {
+                            new_oldest = Some(match new_oldest {
+                                None => aid,
+                                Some(prev) => {
+                                    if aid < prev {
+                                        aid
+                                    } else {
+                                        prev
+                                    }
+                                }
+                            });
+                        }
+                        oldest_arch_id = new_oldest;
+                        // arch_len stays the same: we removed one and will add one below.
+                    }
+                } else {
+                    arch_len += 1;
+                    // Update oldest_arch_id if this new entry is older (lower tx_id).
+                    oldest_arch_id = Some(match oldest_arch_id {
+                        None => tx_id,
+                        Some(prev) => {
+                            if tx_id < prev {
+                                tx_id
+                            } else {
+                                prev
+                            }
+                        }
+                    });
+                }
+
                 let archived_tx = ArchivedTransaction {
                     tx_id: meta.tx_id,
                     tx_type: meta.tx_type,
@@ -1410,18 +1484,19 @@ impl FamilyWallet {
         Self::extend_archive_ttl(&env);
         Self::update_storage_stats(&env);
 
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::System,
-            EventPriority::Low,
-            symbol_short!("archived"),
+        env.events().publish(
+            (symbol_short!("archive"), ArchiveEvent::TransactionsArchived),
             (archived_count, caller),
         );
 
         archived_count
     }
 
-    /// Returns up to `limit` archived transactions (order follows map iteration).
+    /// Returns a page of archived transactions ordered by ascending `tx_id`.
+    ///
+    /// # Parameters
+    /// - `limit`: entries to return; `0` → `DEFAULT_ARCHIVE_PAGE_LIMIT`; clamped to
+    ///   `MAX_ARCHIVE_PAGE_LIMIT`. Ordering follows the map's natural key order (ascending `tx_id`).
     ///
     /// # Authorization
     /// Only Owner or Admin. Requires `caller.require_auth()` to prevent unauthenticated reads
@@ -1436,6 +1511,15 @@ impl FamilyWallet {
             panic!("Only Owner or Admin can view archived transactions");
         }
 
+        // Clamp limit: 0 → default, >max → max.
+        let effective_limit = if limit == 0 {
+            DEFAULT_ARCHIVE_PAGE_LIMIT
+        } else if limit > MAX_ARCHIVE_PAGE_LIMIT {
+            MAX_ARCHIVE_PAGE_LIMIT
+        } else {
+            limit
+        };
+
         let archived: Map<u64, ArchivedTransaction> = env
             .storage()
             .instance()
@@ -1444,7 +1528,7 @@ impl FamilyWallet {
 
         let mut result = Vec::new(&env);
         for (count, (_, tx)) in archived.iter().enumerate() {
-            if count as u32 >= limit {
+            if count as u32 >= effective_limit {
                 break;
             }
             result.push_back(tx);
@@ -1501,11 +1585,8 @@ impl FamilyWallet {
 
         Self::update_storage_stats(&env);
 
-        RemitwiseEvents::emit(
-            &env,
-            EventCategory::System,
-            EventPriority::Low,
-            symbol_short!("exp_cln"),
+        env.events().publish(
+            (symbol_short!("archive"), ArchiveEvent::ExpiredCleaned),
             (removed_count, caller),
         );
         removed_count
@@ -1666,6 +1747,12 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("PEND_TXS"), &pending_txs);
+
+        env.events().publish(
+            (symbol_short!("archive"), ArchiveEvent::TransactionCancelled),
+            (tx_id, caller),
+        );
+
         true
     }
 
@@ -2301,9 +2388,7 @@ impl FamilyWallet {
             // --- Step 1: strip signatures from addresses no longer in the wallet ---
             let mut valid_sigs: Vec<Address> = Vec::new(env);
             for sig in tx.signatures.iter() {
-                if members.get(sig.clone()).is_some()
-                    && !Self::role_has_expired(env, &sig)
-                {
+                if members.get(sig.clone()).is_some() && !Self::role_has_expired(env, &sig) {
                     valid_sigs.push_back(sig);
                 }
             }
@@ -2336,9 +2421,7 @@ impl FamilyWallet {
             // Count how many configured signers are still active members.
             let mut eligible_signers = 0u32;
             for signer in config.signers.iter() {
-                if members.get(signer.clone()).is_some()
-                    && !Self::role_has_expired(env, &signer)
-                {
+                if members.get(signer.clone()).is_some() && !Self::role_has_expired(env, &signer) {
                     eligible_signers += 1;
                 }
             }
