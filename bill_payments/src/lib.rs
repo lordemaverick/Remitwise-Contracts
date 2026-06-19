@@ -386,7 +386,7 @@ impl BillPayments {
     fn index_add_currency(env: &Env, owner: &Address, currency: &String, bill_id: u32) {
         let mut idx = Self::get_currency_index(env);
         let key = (owner.clone(), currency.clone());
-        let mut ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
+        let ids = idx.get(key.clone()).unwrap_or_else(|| Vec::new(env));
         
         // Insert in ascending order
         let mut new_ids: Vec<u32> = Vec::new(env);
@@ -962,7 +962,7 @@ impl BillPayments {
         frequency_days: u32,
         external_ref: Option<String>,
         currency: String,
-        schedule_id: Option<u32>,
+        _schedule_id: Option<u32>,
     ) -> Result<u32, BillPaymentsError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
