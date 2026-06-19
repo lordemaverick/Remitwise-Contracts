@@ -61,20 +61,64 @@ fn init_orchestrator(env: &Env, client: &OrchestratorClient, owner: &Address) {
     client.init(owner, &fw, &rs, &sg, &bp, &ins);
 }
 
-/// Execute one remittance flow entry so the audit log grows by one.
+/// Execute one unsigned remittance flow entry so the audit log grows by one.
+///
+/// Note: this helper uses the *unsigned* execution path and therefore does not
+/// update `ExecutionStats` (which are updated in the signed path).
 fn do_flow(env: &Env, client: &OrchestratorClient, executor: &Address, _nonce: u64) {
-    // Reuse a single mock contract registered once per env (stored via a stable address).
-    // We register it fresh here but the env caches it; the key insight is we must NOT
-    // register a new contract on every call as that exhausts the budget.
     let mock_id = env.register_contract(None, MockContract);
     env.budget().reset_unlimited();
     client.execute_remittance_flow(
-        executor, &1000i128, &mock_id, &mock_id, &mock_id, &mock_id, &mock_id, &1, &1, &1,
+        executor,
+        &1000i128,
+        &mock_id,
+        &mock_id,
+        &mock_id,
+        &mock_id,
+        &mock_id,
+        &1,
+        &1,
+        &1,
+    );
+}
+
+/// Execute one signed remittance flow entry.
+/// This helper is used for tests that validate `ExecutionStats` accounting.
+fn do_flow_signed(
+    env: &Env,
+    client: &OrchestratorClient,
+    executor: &Address,
+    nonce: u64,
+    amount: i128,
+) {
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash = compute_test_hash(env, symbol_short!("flow"), nonce, amount, deadline);
+
+    env.budget().reset_unlimited();
+    let _ = client
+        .execute_remittance_flow_signed(executor, &amount, &nonce, &deadline, &hash);
+}
+
+fn get_stats_or_panic(client: &OrchestratorClient) -> ExecutionStats {
+    client
+        .get_execution_stats()
+        .expect("STATS should exist after orchestrator init")
+}
+
+fn assert_accounting_invariant(stats: &ExecutionStats) {
+    assert_eq!(
+        stats.total_executions,
+        stats.successful_executions + stats.failed_executions,
+        "ExecutionStats accounting identity violated: total={} successful={} failed={}",
+        stats.total_executions,
+        stats.successful_executions,
+        stats.failed_executions
     );
 }
 
 /// Mirror of `Orchestrator::compute_request_hash` for test use.
 fn compute_test_hash(
+
     _env: &Env,
     operation: Symbol,
     nonce: u64,
@@ -602,3 +646,97 @@ fn test_deadline_window_prevents_old_requests() {
         "Request with deadline too far in future should fail"
     );
 }
+
+// ---------------------------------------------------------------------------
+// ExecutionStats accounting invariant tests
+// ---------------------------------------------------------------------------
+
+/// Assert the invariant before any signed flow runs.
+#[test]
+fn test_execution_stats_accounting_initial_invariant() {
+    let (env, owner) = setup_test();
+    let client = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let stats = get_stats_or_panic(&client);
+    assert_accounting_invariant(&stats);
+    assert_eq!(stats.total_executions, 0);
+    assert_eq!(stats.successful_executions, 0);
+    assert_eq!(stats.failed_executions, 0);
+}
+
+/// A successful signed flow increments only `successful_executions`.
+#[test]
+fn test_execution_stats_success_increments_only_success_counter() {
+    let (env, owner) = setup_test();
+    let client = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    // Run exactly one signed flow with nonce 0.
+    do_flow_signed(&env, &client, &executor, 0, 1000);
+
+    let stats = get_stats_or_panic(&client);
+    assert_eq!(stats.total_executions, 1);
+    assert_eq!(stats.successful_executions, 1);
+    assert_eq!(stats.failed_executions, 0);
+    assert_accounting_invariant(&stats);
+}
+
+/// Pre-execution rejections (deadline/nonce/hash/lock) must not mutate stats.
+#[test]
+fn test_execution_stats_no_mutation_on_pre_execution_rejection() {
+    let (env, owner) = setup_test();
+    let client = register_orchestrator(&env);
+    init_orchestrator(&env, &client, &owner);
+
+    let executor = Address::generate(&env);
+
+    let before = get_stats_or_panic(&client);
+
+    // 1) DeadlineExpired: deadline <= now
+    let deadline_expired = env.ledger().timestamp();
+    let hash = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline_expired);
+    let r = client.try_execute_remittance_flow_signed(
+        &executor,
+        &1000,
+        &0,
+        &deadline_expired,
+        &hash,
+    );
+    assert_eq!(r, Err(Ok(OrchestratorError::DeadlineExpired)));
+    let after_deadline = get_stats_or_panic(&client);
+    assert_eq!(after_deadline, before);
+
+    // 2) InvalidNonce: out-of-order nonce
+    let deadline = env.ledger().timestamp() + 1000;
+    // current nonce is still 0; use nonce=5
+    let hash_bad_nonce = compute_test_hash(&env, symbol_short!("flow"), 5, 1000, deadline);
+    let r = client.try_execute_remittance_flow_signed(
+        &executor,
+        &1000,
+        &5,
+        &deadline,
+        &hash_bad_nonce,
+    );
+    assert_eq!(r, Err(Ok(OrchestratorError::InvalidNonce)));
+    let after_nonce = get_stats_or_panic(&client);
+    assert_eq!(after_nonce, before);
+
+    // 4) InvalidNonce: hash mismatch
+    let deadline = env.ledger().timestamp() + 1000;
+    let hash_real = compute_test_hash(&env, symbol_short!("flow"), 0, 1000, deadline);
+    let bad_hash = hash_real.wrapping_add(1);
+    let r = client.try_execute_remittance_flow_signed(
+        &executor,
+        &1000,
+        &0,
+        &deadline,
+        &bad_hash,
+    );
+    assert_eq!(r, Err(Ok(OrchestratorError::InvalidNonce)));
+    let after_hash = get_stats_or_panic(&client);
+    assert_eq!(after_hash, before);
+}
+
