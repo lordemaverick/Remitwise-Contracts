@@ -907,6 +907,13 @@ pub fn import_goals_from_csv(bytes: &[u8]) -> Result<Vec<SavingsGoalExport>, Mig
 
         let record: CsvGoalRow =
             result.map_err(|e| MigrationError::DeserializeError(e.to_string()))?;
+
+        if record.target_amount < 0 || record.current_amount < 0 {
+            return Err(MigrationError::ValidationFailed(
+                "negative amounts are not allowed".into(),
+            ));
+        }
+
         goals.push(SavingsGoalExport {
             id: record.id,
             owner: record.owner,
@@ -2692,28 +2699,7 @@ mod tests {
         assert_eq!(imported_goals[0].target_date, 0);
     }
 
-    #[test]
-    fn test_csv_roundtrip_with_negative_amounts() {
-        let payload = SavingsGoalsExport {
-            next_id: 1,
-            goals: vec![SavingsGoalExport {
-                id: 1,
-                owner: "owner1".into(),
-                name: "Negative Goal".into(),
-                target_amount: -1_000,
-                current_amount: -500,
-                target_date: 2_000_000_000,
-                locked: false,
-            }],
-        };
 
-        let exported_bytes = export_to_csv(&payload).unwrap();
-        let imported_goals = import_goals_from_csv(&exported_bytes).unwrap();
-
-        assert_eq!(imported_goals.len(), 1);
-        assert_eq!(imported_goals[0].target_amount, -1_000);
-        assert_eq!(imported_goals[0].current_amount, -500);
-    }
 
     #[test]
     fn test_csv_roundtrip_with_large_numbers() {
