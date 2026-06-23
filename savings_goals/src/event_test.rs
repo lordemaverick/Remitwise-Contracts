@@ -52,13 +52,13 @@ mod goal_completed_event_tests {
         let (env, client, owner) = setup();
 
         // Create a goal with target = 1_000
-         let goal_id = client.create_goal(
+        let goal_id = client.create_goal(
             &owner,
             &soroban_sdk::String::from_str(&env, "School Fees"),
             &1_000_i128,
             &(env.ledger().timestamp() + 86_400),
             &false,
-    );
+        );
 
         // Add exactly the target amount in one contribution
         client.add_to_goal(&owner, &goal_id, &1_000_i128);
@@ -91,7 +91,7 @@ mod goal_completed_event_tests {
             &500_i128,
             &(env.ledger().timestamp() + 86_400),
             &false,
-    );
+        );
 
         // Contribute MORE than the target in a single call
         client.add_to_goal(&owner, &goal_id, &750_i128);
@@ -118,8 +118,8 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "School Fees"),
             &1_000_i128,
             &(env.ledger().timestamp() + 86_400),
-        &false,
-    );
+            &false,
+        );
 
         // First contribution: partial (no completion yet)
         client.add_to_goal(&owner, &goal_id, &400_i128);
@@ -154,8 +154,8 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Medical Fund"),
             &1_000_i128,
             &(env.ledger().timestamp() + 86_400),
-        &false,
-    );
+            &false,
+        );
 
         // Complete the goal → 2 events (legacy + RemitwiseEvents)
         client.add_to_goal(&owner, &goal_id, &1_000_i128);
@@ -181,8 +181,8 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Home Deposit"),
             &2_000_i128,
             &(env.ledger().timestamp() + 86_400),
-        &false,
-    );
+            &false,
+        );
 
         client.add_to_goal(&owner, &goal_id, &2_000_i128);
         assert_eq!(count_completed_events(&env), 2);
@@ -212,8 +212,8 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Business Capital"),
             &1_000_i128,
             &(env.ledger().timestamp() + 86_400),
-        &false,
-    );
+            &false,
+        );
 
         client.batch_add_to_goals(
             &owner,
@@ -240,20 +240,20 @@ mod goal_completed_event_tests {
     fn test_batch_add_completes_two_goals_emits_two_events() {
         let (env, client, owner) = setup();
 
-          let goal_a = client.create_goal(
+        let goal_a = client.create_goal(
             &owner,
             &soroban_sdk::String::from_str(&env, "Goal A"),
             &500_i128,
             &(env.ledger().timestamp() + 86_400),
             &false,
-    );
+        );
         let goal_b = client.create_goal(
             &owner,
             &soroban_sdk::String::from_str(&env, "Goal B"),
             &800_i128,
             &(env.ledger().timestamp() + 86_400),
             &false,
-    );
+        );
 
         client.batch_add_to_goals(
             &owner,
@@ -292,8 +292,8 @@ mod goal_completed_event_tests {
             &soroban_sdk::String::from_str(&env, "Already Done"),
             &300_i128,
             &(env.ledger().timestamp() + 86_400),
-        &false,
-    );
+            &false,
+        );
 
         // Complete via single add first → 2 events
         client.add_to_goal(&owner, &goal_id, &300_i128);

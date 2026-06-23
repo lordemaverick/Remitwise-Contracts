@@ -33,9 +33,7 @@ extern crate std;
 
 use super::*;
 use soroban_sdk::{
-    symbol_short,
-    testutils::Address as AddressTrait,
-    Address, Env, String, Symbol, TryFromVal,
+    symbol_short, testutils::Address as AddressTrait, Address, Env, String, Symbol, TryFromVal,
 };
 use testutils::set_ledger_time;
 
@@ -52,7 +50,7 @@ fn setup(env: &Env) -> (SavingsGoalContractClient, Address) {
 }
 
 fn make_goal(env: &Env, client: &SavingsGoalContractClient, owner: &Address, target: i128) -> u32 {
-      client.create_goal(
+    client.create_goal(
         owner,
         &String::from_str(env, "Test Goal"),
         &target,

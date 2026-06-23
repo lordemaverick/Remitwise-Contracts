@@ -254,7 +254,7 @@ fn stress_ttl_re_bumped_by_add_to_goal_after_ledger_advancement() {
         &String::from_str(&env, "AddTTL"),
         &10_000i128,
         &2_000_000_000u64,
-    &false,
+        &false,
     );
 
     // Advance ledger so TTL drops below threshold
@@ -304,8 +304,8 @@ fn stress_batch_add_to_goals_at_max_batch_size() {
             &String::from_str(&env, "BatchGoal"),
             &1_000i128,
             &target_date,
-        &false,
-    );
+            &false,
+        );
         goal_ids.push(id);
     }
 
@@ -368,8 +368,8 @@ fn stress_data_persists_across_multiple_ledger_advancements() {
             &String::from_str(&env, "Phase1"),
             &1_000i128,
             &2_000_000_000u64,
-        &false,
-    );
+            &false,
+        );
     }
     assert_eq!(client.get_all_goals(&owner).len(), 30);
 
@@ -390,8 +390,8 @@ fn stress_data_persists_across_multiple_ledger_advancements() {
             &String::from_str(&env, "Phase2"),
             &2_000i128,
             &2_100_000_000u64,
-        &false,
-    );
+            &false,
+        );
     }
     assert_eq!(
         client.get_all_goals(&owner).len(),
@@ -488,8 +488,8 @@ fn bench_batch_add_to_goals_50_contributions() {
             &String::from_str(&env, "BatchBench"),
             &10_000i128,
             &2_000_000_000u64,
-        &false,
-    );
+            &false,
+        );
         goal_ids.push(id);
     }
 

@@ -659,10 +659,6 @@ impl FamilyWallet {
             return Err(Error::InvalidThreshold);
         }
 
-
-
-
-
         // Check signer membership and uniqueness in a single pass
         let mut checked: Map<Address, bool> = Map::new(&env);
         for signer in signers.iter() {

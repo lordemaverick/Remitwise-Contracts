@@ -50,7 +50,7 @@ fn test_create_goal_near_max_i128() {
         &String::from_str(&env, "Large Goal"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     let goal = client.get_goal(&goal_id).unwrap();
@@ -74,7 +74,7 @@ fn test_add_to_goal_with_large_amount() {
         &String::from_str(&env, "Large Goal"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     env.mock_all_auths();
@@ -102,7 +102,7 @@ fn test_add_to_goal_multiple_large_contributions() {
         &String::from_str(&env, "Large Goal"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     // Add multiple times safely
@@ -135,7 +135,7 @@ fn test_add_to_goal_overflow_returns_error() {
         &String::from_str(&env, "Overflow Goal"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     // First addition should succeed at the safe cap boundary.
@@ -166,7 +166,7 @@ fn test_batch_add_to_goals_overflow_returns_error() {
         &String::from_str(&env, "Batch Overflow Goal"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     env.mock_all_auths();
@@ -202,7 +202,7 @@ fn test_batch_add_to_goals_duplicate_goal_ids_use_updated_balance() {
         &String::from_str(&env, "Duplicate Batch Goal"),
         &i128::MAX,
         &2000000,
-    &false,
+        &false,
     );
 
     env.mock_all_auths();
@@ -236,7 +236,7 @@ fn test_batch_add_to_goals_rejects_zero_and_negative_amounts() {
         &String::from_str(&env, "Invalid Amount Goal"),
         &1000,
         &2000000,
-    &false,
+        &false,
     );
 
     let mut zero_batch = Vec::new(&env);
@@ -277,7 +277,7 @@ fn test_batch_add_to_goals_rejects_oversized_batch() {
         &String::from_str(&env, "Oversized Batch Goal"),
         &1000,
         &2000000,
-    &false,
+        &false,
     );
 
     let mut contributions = Vec::new(&env);
@@ -309,7 +309,7 @@ fn test_withdraw_from_goal_with_large_amount() {
         &String::from_str(&env, "Large Goal"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     // Add funds
@@ -379,7 +379,7 @@ fn test_goal_completion_with_large_amounts() {
         &String::from_str(&env, "Large Goal"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     // Add exactly the target amount
@@ -412,7 +412,7 @@ fn test_batch_add_with_large_amounts() {
         &String::from_str(&env, "Goal 1"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     env.mock_all_auths();
@@ -421,7 +421,7 @@ fn test_batch_add_with_large_amounts() {
         &String::from_str(&env, "Goal 2"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     env.mock_all_auths();
@@ -430,7 +430,7 @@ fn test_batch_add_with_large_amounts() {
         &String::from_str(&env, "Goal 3"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     // Batch add to all goals
@@ -480,8 +480,8 @@ fn test_multiple_goals_with_large_amounts() {
             &String::from_str(&env, &format!("Goal {}", i)),
             &large_target,
             &2000000,
-        &false,
-    );
+            &false,
+        );
         env.mock_all_auths();
     }
 
@@ -511,7 +511,7 @@ fn test_edge_case_i128_max_minus_one() {
         &String::from_str(&env, "Edge Case"),
         &edge_target,
         &2000000,
-    &false,
+        &false,
     );
 
     let goal = client.get_goal(&goal_id).unwrap();
@@ -535,8 +535,8 @@ fn test_pagination_with_large_amounts() {
             &String::from_str(&env, &format!("Goal {}", i)),
             &large_target,
             &2000000,
-        &false,
-    );
+            &false,
+        );
         env.mock_all_auths();
     }
 
@@ -580,7 +580,7 @@ fn test_lock_unlock_with_large_amounts() {
     );
 
     let goal = client.get_goal(&goal_id).unwrap();
-    assert!(!goal.locked);  // Updated: default is now unlocked
+    assert!(!goal.locked); // Updated: default is now unlocked
 
     // Explicit locked path (commitment device)
     let locked_id = client.create_goal(
@@ -636,8 +636,8 @@ fn test_sequential_large_operations() {
             &String::from_str(&env, &format!("Goal {}", i)),
             amount,
             &2000000,
-        &false,
-    );
+            &false,
+        );
 
         env.mock_all_auths();
         client.add_to_goal(&owner, &goal_id, &(amount / 2));
@@ -668,7 +668,7 @@ fn test_time_lock_with_large_amounts() {
         &String::from_str(&env, "Time-locked Goal"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     // Add funds
@@ -714,7 +714,7 @@ fn test_export_import_snapshot_with_large_amounts() {
         &String::from_str(&env, "Goal 1"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     env.mock_all_auths();
@@ -726,7 +726,7 @@ fn test_export_import_snapshot_with_large_amounts() {
         &String::from_str(&env, "Goal 2"),
         &large_target,
         &2000000,
-    &false,
+        &false,
     );
 
     env.mock_all_auths();
@@ -764,7 +764,7 @@ fn test_add_to_goal_near_safe_cap_boundary() {
         &String::from_str(&env, "Near-Cap Goal"),
         &safe_cap,
         &2000000,
-    &false,
+        &false,
     );
 
     // Add amount that brings us to exactly safe_cap
@@ -797,7 +797,7 @@ fn test_add_to_goal_just_over_safe_cap_returns_overflow() {
         &String::from_str(&env, "Over-Cap Goal"),
         &i128::MAX,
         &2000000,
-    &false,
+        &false,
     );
 
     // First add at safe boundary
@@ -828,7 +828,7 @@ fn test_withdraw_from_goal_near_underflow() {
         &String::from_str(&env, "Small Goal"),
         &small_amount,
         &2000000,
-    &false,
+        &false,
     );
 
     // Add small amount
@@ -866,7 +866,7 @@ fn test_withdraw_from_goal_overflow_protection() {
         &String::from_str(&env, "Withdrawal Test"),
         &(i128::MAX / 2),
         &2000000,
-    &false,
+        &false,
     );
 
     // Add funds
@@ -909,7 +909,7 @@ fn test_concurrent_near_boundary_operations_deterministic() {
         &String::from_str(&env, "Goal 1"),
         &safe_cap,
         &2000000,
-    &false,
+        &false,
     );
 
     env.mock_all_auths();
@@ -918,7 +918,7 @@ fn test_concurrent_near_boundary_operations_deterministic() {
         &String::from_str(&env, "Goal 2"),
         &safe_cap,
         &2000000,
-    &false,
+        &false,
     );
 
     env.mock_all_auths();
@@ -927,7 +927,7 @@ fn test_concurrent_near_boundary_operations_deterministic() {
         &String::from_str(&env, "Goal 3"),
         &safe_cap,
         &2000000,
-    &false,
+        &false,
     );
 
     // Add amounts that deterministically reach exactly `safe_cap`.
@@ -983,7 +983,7 @@ fn test_error_codes_stable_across_repeated_operations() {
         &String::from_str(&env, "Error Test"),
         &1000i128,
         &2000000,
-    &false,
+        &false,
     );
 
     // Fill goal

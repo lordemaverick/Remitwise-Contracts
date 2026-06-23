@@ -4779,7 +4779,7 @@ mod migration_e2e_tests {
         client.add_to_goal(&owner, &goal_id, &5_000i128);
         // Goal is created locked by default; verify it is still locked.
         let goal = client.get_goal(&goal_id).unwrap();
-         assert!(
+        assert!(
             goal.locked,
             "goal must be locked after explicit locked creation"
         );

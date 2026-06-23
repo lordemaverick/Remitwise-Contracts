@@ -810,7 +810,7 @@ impl SavingsGoalContract {
     // Core goal operations
     // -----------------------------------------------------------------------
 
-        /// Creates a new savings goal.
+    /// Creates a new savings goal.
     ///
     /// New goals default to `locked: false` (immediately usable).
     /// Pass `locked: true` explicitly for commitment-device goals.
@@ -823,7 +823,7 @@ impl SavingsGoalContract {
         name: String,
         target_amount: i128,
         target_date: u64,
-        locked: bool,  // new parameter - default false from callers
+        locked: bool, // new parameter - default false from callers
     ) -> Result<u32, SavingsGoalError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_GOAL);
@@ -866,7 +866,7 @@ impl SavingsGoalContract {
             target_amount,
             current_amount: 0,
             target_date,
-            locked,  // use the parameter (defaults to false)
+            locked, // use the parameter (defaults to false)
             unlock_date: None,
             tags: Vec::new(&env),
         };
@@ -2251,12 +2251,7 @@ impl SavingsGoalContract {
             // Active iff unlock_date is strictly in the future.
             if prev_unlock > current_time {
                 if unlock_date < prev_unlock {
-                    Self::append_audit(
-                        &env,
-                        symbol_short!("timelock"),
-                        &caller,
-                        false,
-                    );
+                    Self::append_audit(&env, symbol_short!("timelock"), &caller, false);
                     soroban_sdk::panic_with_error!(env, SavingsGoalError::TimeLockShortening);
                 }
             }
@@ -2265,7 +2260,6 @@ impl SavingsGoalContract {
         // Even if there is an active time-lock, extending to the same value
         // (`new_unlock == prev_unlock`) is accepted and treated as a no-op.
         // Any other extension (`new_unlock > prev_unlock`) updates the lock.
-        
 
         // new_unlock == prev_unlock => accepted no-op.
         goal.unlock_date = Some(unlock_date);

@@ -379,7 +379,6 @@ fn test_propose_split_config_change() {
         _ => panic!("unexpected transaction data variant for SplitConfigChange"),
     }
 
-
     // Under-quorum: after only the proposer signature, the proposal must still be pending.
     // (execute is triggered only when signatures.len() reaches threshold)
     let pending_after_proposer_sig = client.get_pending_transaction(&tx_id);
@@ -395,9 +394,7 @@ fn test_propose_split_config_change() {
     // Split values are applied in execute_transaction_internal where (SplitConfigChange(..)) is
     // matched, so successful execution implies correct decoding into the intended state.
     // TODO: add a direct split-config getter assertion once exposed by the test client.
-
 }
-
 
 #[test]
 fn test_propose_role_change() {
@@ -4423,7 +4420,10 @@ fn test_audit_ring_evicts_oldest_retains_newest() {
     let oldest_retained = base + (seeded - MAX_ACCESS_AUDIT_ENTRIES) as u64; // 1050
     let newest_retained = base + (seeded - 1) as u64; // 1249
     assert_eq!(timestamps.get(0).unwrap(), oldest_retained);
-    assert_eq!(timestamps.get(timestamps.len() - 1).unwrap(), newest_retained);
+    assert_eq!(
+        timestamps.get(timestamps.len() - 1).unwrap(),
+        newest_retained
+    );
     assert_eq!(first_page.items.get(0).unwrap().timestamp, oldest_retained);
 
     // Post-eviction state: no page references an evicted entry, and the
@@ -4431,7 +4431,11 @@ fn test_audit_ring_evicts_oldest_retains_newest() {
     for i in 0..timestamps.len() {
         let ts = timestamps.get(i).unwrap();
         assert!(ts >= oldest_retained, "evicted entry leaked into page");
-        assert_eq!(ts, oldest_retained + i as u64, "non-contiguous retained set");
+        assert_eq!(
+            ts,
+            oldest_retained + i as u64,
+            "non-contiguous retained set"
+        );
     }
 }
 
@@ -4542,7 +4546,9 @@ fn test_audit_page_authorization_matches_policy() {
 
     // Member and non-member are rejected by the Admin role gate.
     assert!(client.try_get_access_audit_page(&member, &0, &10).is_err());
-    assert!(client.try_get_access_audit_page(&stranger, &0, &10).is_err());
+    assert!(client
+        .try_get_access_audit_page(&stranger, &0, &10)
+        .is_err());
 }
 
 /// Cross-read consistency: `get_access_audit(limit)` returns the newest `limit`
@@ -4566,16 +4572,19 @@ fn test_get_access_audit_consistent_with_paginated_view() {
     assert_eq!(full.len(), MAX_ACCESS_AUDIT_ENTRIES);
 
     // For several limits, the tail read must equal the suffix of the page view.
-    for limit in [1u32, 10, MAX_AUDIT_PAGE_LIMIT, MAX_ACCESS_AUDIT_ENTRIES, 1000] {
+    for limit in [
+        1u32,
+        10,
+        MAX_AUDIT_PAGE_LIMIT,
+        MAX_ACCESS_AUDIT_ENTRIES,
+        1000,
+    ] {
         let tail = client.get_access_audit(&limit);
         let expected_len = limit.min(MAX_ACCESS_AUDIT_ENTRIES);
         assert_eq!(tail.len(), expected_len);
         let start = full.len() - expected_len;
         for j in 0..expected_len {
-            assert_eq!(
-                tail.get(j).unwrap().timestamp,
-                full.get(start + j).unwrap()
-            );
+            assert_eq!(tail.get(j).unwrap().timestamp, full.get(start + j).unwrap());
         }
     }
 }
@@ -4636,7 +4645,13 @@ fn test_threshold_change_lower_allows_execution() {
     StellarAssetClient::new(&env, &token_contract.address()).mint(&owner, &amount);
 
     // Configure with threshold=3
-    let signers = vec![&env, owner.clone(), member1.clone(), member2.clone(), member3.clone()];
+    let signers = vec![
+        &env,
+        owner.clone(),
+        member1.clone(),
+        member2.clone(),
+        member3.clone(),
+    ];
     client.configure_multisig(
         &owner,
         &TransactionType::LargeWithdrawal,
@@ -4750,7 +4765,14 @@ fn test_threshold_change_raise_blocks_execution() {
     );
 
     assert!(tx_id > 0);
-    assert_eq!(client.get_pending_transaction(&tx_id).unwrap().signatures.len(), 1);
+    assert_eq!(
+        client
+            .get_pending_transaction(&tx_id)
+            .unwrap()
+            .signatures
+            .len(),
+        1
+    );
 
     // Raise threshold to 3 (proposal has 1 signature, below new threshold)
     client.configure_multisig(
@@ -4828,14 +4850,16 @@ fn test_threshold_change_raise_to_exact_signature_count() {
 
     // Propose (owner signs as proposer)
     let recipient = Address::generate(&env);
-    let tx_id = client.withdraw(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &2000_0000000,
-    );
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
 
-    assert_eq!(client.get_pending_transaction(&tx_id).unwrap().signatures.len(), 1);
+    assert_eq!(
+        client
+            .get_pending_transaction(&tx_id)
+            .unwrap()
+            .signatures
+            .len(),
+        1
+    );
 
     // Raise threshold to 1
     client.configure_multisig(
@@ -4997,12 +5021,7 @@ fn test_threshold_change_quorum_unachievable_via_revalidate() {
 
     // Propose withdrawal
     let recipient = Address::generate(&env);
-    let tx_id = client.withdraw(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &2000_0000000,
-    );
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
 
     assert!(tx_id > 0);
     let pending_before = client.get_pending_transaction(&tx_id);
@@ -5048,12 +5067,7 @@ fn test_threshold_change_quorum_unachievable_via_member_removal() {
     let member1 = Address::generate(&env);
     let member2 = Address::generate(&env);
     let member3 = Address::generate(&env);
-    let initial_members = vec![
-        &env,
-        member1.clone(),
-        member2.clone(),
-        member3.clone(),
-    ];
+    let initial_members = vec![&env, member1.clone(), member2.clone(), member3.clone()];
 
     client.init(&owner, &initial_members);
 
@@ -5081,12 +5095,7 @@ fn test_threshold_change_quorum_unachievable_via_member_removal() {
 
     // Propose
     let recipient = Address::generate(&env);
-    let tx_id = client.withdraw(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &2000_0000000,
-    );
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
 
     assert!(tx_id > 0);
     let pending_initial = client.get_pending_transaction(&tx_id);
@@ -5149,12 +5158,7 @@ fn test_threshold_change_proposal_invalidated_event_emission() {
 
     // Propose
     let recipient = Address::generate(&env);
-    let tx_id = client.withdraw(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &2000_0000000,
-    );
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
 
     assert!(tx_id > 0);
 
@@ -5240,12 +5244,7 @@ fn test_threshold_change_selective_proposal_invalidation() {
 
     // Propose LargeWithdrawal (1 signature: owner)
     let recipient = Address::generate(&env);
-    let wd_tx_id = client.withdraw(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &2000_0000000,
-    );
+    let wd_tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
     assert!(wd_tx_id > 0);
 
     // Both proposals should be pending
@@ -5316,18 +5315,27 @@ fn test_threshold_change_with_signature_collection_in_progress() {
 
     // Propose (owner signs)
     let recipient = Address::generate(&env);
-    let tx_id = client.withdraw(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &2000_0000000,
-    );
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
 
-    assert_eq!(client.get_pending_transaction(&tx_id).unwrap().signatures.len(), 1);
+    assert_eq!(
+        client
+            .get_pending_transaction(&tx_id)
+            .unwrap()
+            .signatures
+            .len(),
+        1
+    );
 
     // member1 signs (count=2)
     client.sign_transaction(&member1, &tx_id);
-    assert_eq!(client.get_pending_transaction(&tx_id).unwrap().signatures.len(), 2);
+    assert_eq!(
+        client
+            .get_pending_transaction(&tx_id)
+            .unwrap()
+            .signatures
+            .len(),
+        2
+    );
 
     // Lower threshold to 2
     client.configure_multisig(
@@ -5387,12 +5395,7 @@ fn test_threshold_change_minimum_with_single_signer() {
 
     // Propose
     let recipient = Address::generate(&env);
-    let tx_id = client.withdraw(
-        &owner,
-        &token_contract.address(),
-        &recipient,
-        &2000_0000000,
-    );
+    let tx_id = client.withdraw(&owner, &token_contract.address(), &recipient, &2000_0000000);
 
     // With threshold=1 and owner as proposer (1 sig), execution should happen immediately
     let pending = client.get_pending_transaction(&tx_id);
@@ -5646,13 +5649,7 @@ fn test_revalidate_proposals_invalidates_unreachable_proposals() {
 
     // RoleChange multisig: threshold=3, signers=[alice, bob, charlie]
     let signers = vec![&env, alice.clone(), bob.clone(), charlie.clone()];
-    client.configure_multisig(
-        &owner,
-        &TransactionType::RoleChange,
-        &3,
-        &signers,
-        &0,
-    );
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &3, &signers, &0);
 
     // Propose two RoleChanges — eligible=3, threshold=3 → both reachable.
     let tx_a = client.propose_role_change(&alice, &bob, &FamilyRole::Admin);
@@ -5704,13 +5701,7 @@ fn test_revalidate_proposals_threshold_raised_above_eligible() {
 
     // Configure with threshold=2, signers=[alice, bob, charlie]
     let signers = vec![&env, alice.clone(), bob.clone(), charlie.clone()];
-    client.configure_multisig(
-        &owner,
-        &TransactionType::RoleChange,
-        &2,
-        &signers,
-        &0,
-    );
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
 
     // Propose a RoleChange — eligible=3, threshold=2 → reachable.
     let tx_id = client.propose_role_change(&alice, &bob, &FamilyRole::Admin);
@@ -5720,13 +5711,7 @@ fn test_revalidate_proposals_threshold_raised_above_eligible() {
     assert!(before.expires_at > 20_000);
 
     // Raise threshold to 3 via configure_multisig (no auto-revalidation).
-    client.configure_multisig(
-        &owner,
-        &TransactionType::RoleChange,
-        &3,
-        &signers,
-        &0,
-    );
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &3, &signers, &0);
 
     // Remove charlie — auto-revalidation: eligible=2 < threshold=3.
     client.remove_family_member(&owner, &charlie);
@@ -5760,13 +5745,7 @@ fn test_revalidate_proposals_leaves_reachable_proposals_untouched() {
 
     // RoleChange multisig: threshold=2, signers=[alice, bob, charlie]
     let signers = vec![&env, alice.clone(), bob.clone(), charlie.clone()];
-    client.configure_multisig(
-        &owner,
-        &TransactionType::RoleChange,
-        &2,
-        &signers,
-        &0,
-    );
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &2, &signers, &0);
 
     let tx_id = client.propose_role_change(&alice, &bob, &FamilyRole::Admin);
     assert!(tx_id > 0);
@@ -5800,13 +5779,7 @@ fn test_revalidate_proposals_idempotent() {
     client.init(&owner, &vec![&env, alice.clone()]);
 
     let signers = vec![&env, alice.clone()];
-    client.configure_multisig(
-        &owner,
-        &TransactionType::RoleChange,
-        &1,
-        &signers,
-        &0,
-    );
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &1, &signers, &0);
 
     let tx_id = client.propose_role_change(&alice, &alice, &FamilyRole::Admin);
     assert!(tx_id > 0);
@@ -5847,10 +5820,7 @@ fn test_revalidate_proposals_no_pending_returns_zero() {
 
     // No proposals created.
     let count = client.revalidate_proposals(&owner);
-    assert_eq!(
-        count, 0,
-        "revalidate_proposals on empty queue returns 0"
-    );
+    assert_eq!(count, 0, "revalidate_proposals on empty queue returns 0");
 }
 
 /// A signer who was removed from the family must have their existing
@@ -5877,13 +5847,7 @@ fn test_revalidate_proposals_strips_removed_signer_signature() {
     // threshold=3, signers=[alice, bob, charlie] — so alice+bob signing
     // does NOT reach threshold and the proposal stays pending.
     let signers = vec![&env, alice.clone(), bob.clone(), charlie.clone()];
-    client.configure_multisig(
-        &owner,
-        &TransactionType::RoleChange,
-        &3,
-        &signers,
-        &0,
-    );
+    client.configure_multisig(&owner, &TransactionType::RoleChange, &3, &signers, &0);
 
     // Alice proposes — her signature is recorded. Bob signs too.
     let tx_id = client.propose_role_change(&alice, &bob, &FamilyRole::Admin);
@@ -6380,6 +6344,4 @@ fn test_precision_spending_overflow_graceful() {
     // may reject based on threshold/authorization vs arithmetic guards.
     let result = client.try_validate_precision_spending(&member, &i128::MAX);
     assert!(result.is_ok() || result.is_err());
-
 }
-
